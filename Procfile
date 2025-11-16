@@ -1,1 +1,1 @@
-web: npm start
+npm install --save-dev electron electron-builder

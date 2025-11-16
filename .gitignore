@@ -26,6 +26,13 @@ gcp-credentials.json
 # logs
 /logs
 *.log
+
+# Electron build output
+/dist
+*.exe
+*.blockmap
+electron-debug.log
+
 # Large video files (use CDN for production)
 public/videos/*.mp4
 public/videos/*.mov

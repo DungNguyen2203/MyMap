@@ -7,11 +7,14 @@
 [![Node.js](https://img.shields.io/badge/Node.js-18.x-green.svg)](https://nodejs.org/)
 [![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-green.svg)](https://www.mongodb.com/)
 [![React](https://img.shields.io/badge/React-18.x-blue.svg)](https://reactjs.org/)
+[![Electron](https://img.shields.io/badge/Electron-39.x-blue.svg)](https://www.electronjs.org/)
 [![License](https://img.shields.io/badge/license-ISC-blue.svg)](LICENSE)
 
 **Transform documents into interactive mind maps with AI-powered intelligence**
 
-[Features](#-features) • [Quick Start](#-quick-start) • [Documentation](#-project-structure) • [Demo](#-demo)
+🌐 **Live Demo**: [https://mymap-app-k7xl.onrender.com/](https://mymap-app-k7xl.onrender.com/)
+
+[Features](#-features) • [Quick Start](#-quick-start) • [Desktop App](#-desktop-app) • [Documentation](#-project-structure)
 
 </div>
 
@@ -201,6 +204,72 @@ npm start
 
 ---
 
+## 💻 Desktop App
+
+MindTree is also available as a standalone desktop application using Electron!
+
+### Building Desktop App
+
+**1. Ensure dependencies are installed**
+
+```bash
+# Install Electron and builder (if not already installed)
+npm install --save-dev electron electron-builder
+```
+
+**2. Run in development mode**
+
+```bash
+# Start Node.js server first (in one terminal)
+npm start
+
+# Launch Electron app (in another terminal)
+npm run electron
+```
+
+**3. Build Windows installer**
+
+```bash
+# Build .exe installer for Windows
+npm run dist-win
+
+# Output: dist/MindTree Setup.exe
+```
+
+**4. Build for other platforms**
+
+```bash
+# macOS (requires macOS)
+npm run dist -- --mac
+
+# Linux
+npm run dist -- --linux
+
+# All platforms
+npm run dist
+```
+
+### Desktop App Features
+
+- 🖥️ **Standalone Application**: No browser required
+- 🚀 **Embedded Server**: Node.js server runs automatically
+- 📦 **Single Executable**: Easy distribution and installation
+- 🔒 **Local Data**: All data stored locally or in your cloud
+- ⚡ **Better Performance**: Native OS integration
+
+### Configuration
+
+The desktop app is configured in `electron.js`:
+
+- **Window Size**: 1400x900 pixels
+- **Auto-Load**: Connects to `localhost:3000` automatically
+- **DevTools**: Enabled in development mode
+- **Security**: Context isolation and web security enabled
+
+For detailed desktop app build instructions, see [BUILD_DESKTOP_APP.md](BUILD_DESKTOP_APP.md).
+
+---
+
 ## 📁 Project Structure
 
 ```
@@ -262,9 +331,12 @@ MyMap/
 ├── 📂 .github/
 │   └── copilot-instructions.md # AI coding agent guidelines
 │
+├── electron.js                  # Electron app entry point (desktop)
+├── electron-debug.log           # Electron runtime logs
 ├── index.js                     # Express app entry point
 ├── socketHandler.js             # Socket.IO real-time logic
 ├── package.json                 # Dependencies & scripts
+├── BUILD_DESKTOP_APP.md         # Desktop app build guide
 └── README.md                    # This file
 ```
 
@@ -274,6 +346,7 @@ MyMap/
 - **Pug Templates**: Server-rendered pages (dashboard, login, profile)
 - **React App**: Mind map editor at `/editor/:id` (built to `MindMapBoDoi/project-d10/build/`)
 - **Socket.IO Client**: Real-time chat and friend status updates
+- **Electron**: Desktop application wrapper (optional)
 
 **Backend Stack:**
 - **Express.js**: RESTful API + template rendering
@@ -288,6 +361,12 @@ MyMap/
 4. Markdown → Mind map conversion
 5. Store in user-specific MongoDB collection (`mindmapsDb.collection(userId)`)
 6. Render React app at `/editor/:id` for editing
+
+**Desktop App Architecture:**
+- **Electron Main Process**: Manages app lifecycle, spawns Node.js server
+- **Renderer Process**: BrowserWindow loads `localhost:3000`
+- **Inter-Process Communication**: Server runs as child process
+- **Build System**: electron-builder creates platform-specific installers
 
 ---
 
@@ -529,6 +608,16 @@ npm test
 ---
 
 ## 🚢 Deployment
+
+### Live Deployment
+
+**Production URL**: [https://mymap-app-k7xl.onrender.com/](https://mymap-app-k7xl.onrender.com/)
+
+The application is currently deployed on Render.com with the following configuration:
+- **Platform**: Render Web Service
+- **Node Version**: 18.x LTS
+- **Build**: Automatic builds from main branch
+- **Services**: MongoDB Atlas (cloud database) + Redis (in-memory cache)
 
 ### Deploying to Render.com
 
