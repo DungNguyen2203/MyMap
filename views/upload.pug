@@ -451,13 +451,12 @@ block scripts
           throw new Error(result.error || `Lỗi server ${response.status} khi lưu`);
         }
 
-        // Hiện thông báo trước
-        alert(result.message || 'Mindmap đã được lưu thành công!');
+        showToast(result.message || 'Mindmap đã được lưu thành công!', 'Thành công', 'success');
         
         // Sau khi user bấm OK alert, redirect đến trang xem mindmap
         if (result.data && result.data.redirectUrl) {
           console.log("🔄 Redirect đến:", result.data.redirectUrl);
-          window.location.href = result.data.redirectUrl;
+          window.open(result.data.redirectUrl, '_blank');
         } else if (result.data && result.data.mindmapId) {
           // Fallback nếu không có redirectUrl
           window.location.href = `/import/${result.data.mindmapId}`;

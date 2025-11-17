@@ -15,8 +15,8 @@ block main
         .welcome-subtitle#welcomeSubtitle #{user.isFirstLoginEver ? 'Chào mừng đến với' : 'Chào mừng trở lại'}
         .welcome-title(data-text="MindTree") MindTree
         .username-display#usernameDisplay #{user.displayName || user.username}
-        .loading-bar-container
-          .loading-bar
+      .loading-bar-container
+        .loading-bar
       
       script#userData(type="application/json").
         {
@@ -59,7 +59,9 @@ block main
     main.dashboard-content
       .search-and-title
         h2.content-title(style="margin-bottom: 0;") 
-          if currentFolder
+          if searchQuery && searchQuery.trim() !== ''
+            | Các kết quả tìm kiếm của "#{searchQuery}"
+          else if currentFolder
             | #{currentFolder.name}
           else
             if mindmaps && mindmaps.length > 0
@@ -266,8 +268,7 @@ block scripts
       .then(response => response.json())
       .then(data => {
         if (data.success) {
-          // Redirect to the React app route (/import/:id)
-          window.location.href = `/import/${data.data.mindmapId}`;
+          window.open(`/import/${data.data.mindmapId}`, '_blank');
         } else {
           showToast('Lỗi khi tạo mindmap: ' + (data.message || 'Unknown error'), 'Lỗi', 'error');
         }

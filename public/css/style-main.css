@@ -139,8 +139,8 @@ body {
   margin-left: -1px; 
   z-index: 1; 
 
-  background-color: #0881fb;   /* Màu nền trắng xám (nổi bật) */
-  color: #ffff;             /* Màu icon tím đậm (giống header) */
+  background-color: #0881fb;  
+  color: #ffff;             
 }
 
 
@@ -276,4 +276,22 @@ header .container .dropdown {
 #appToast.show .toast-progress {
   /* Chạy animation trong 2 giây (khớp data-bs-delay) */
   animation: runProgress 2s linear forwards; 
+}
+
+/* Custom style cho nút Đăng xuất trong dropdown */
+.dropdown-menu .dropdown-item.logout-button {
+    color: var(--text-color); /* Giữ màu chữ mặc định của bạn */
+}
+
+.dropdown-menu .dropdown-item.logout-button:hover,
+.dropdown-menu .dropdown-item.logout-button:focus,
+.dropdown-menu .dropdown-item.logout-button:active {
+    background-color: #dc3545 !important; /* Màu đỏ của Bootstrap */
+    color: white !important; /* Chữ trắng */
+}
+
+/* Đảm bảo trạng thái active khi click cũng có màu đỏ */
+.dropdown-menu .dropdown-item.logout-button.active {
+    background-color: #dc3545 !important;
+    color: white !important;
 }

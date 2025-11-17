@@ -6,21 +6,6 @@
         
     }
 
-.welcome-screen {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100vh;
-    background: #000;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    z-index: 9999;
-    overflow: hidden;
-}
-
 /* Hiệu ứng nền sao nhấp nháy NÂNG CẤP */
 .stars-background {
     position: absolute;
@@ -77,12 +62,7 @@
     }
 }
 
-/* Container chính cho nội dung */
-.welcome-content {
-    text-align: center;
-    z-index: 2;
-    position: relative;
-}
+
 
 /* THÊM HIỆU ỨNG GLOW PULSE CHO TOÀN BỘ CONTENT */
 .welcome-content::before {
@@ -204,6 +184,31 @@
     51%, 100% { opacity: 0; }
 }
 
+.welcome-screen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100vh;
+    background: #000;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+    overflow: hidden;
+}
+/* Container chính cho nội dung */
+.welcome-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center; 
+    text-justify: auto;
+    justify-content: center;
+    text-align: center; 
+    z-index: 2;
+    position: relative;
+}
 /* Hiệu ứng loading/progress bar - THÊM GLOW EFFECT */
 .loading-bar-container {
     width: 300px;
@@ -211,19 +216,17 @@
     background: rgba(255, 255, 255, 0.1);
     border-radius: 2px;
     overflow: hidden;
-    margin-top: 2rem;
     opacity: 0;
-    position: relative;
     animation: fadeIn 0.5s ease 2s forwards;
     box-shadow: 0 0 10px rgba(140, 82, 255, 0.2);
+    margin-left: 300px;
+    
 }
-
 .loading-bar {
     width: 0%;
     height: 100%;
     background: linear-gradient(90deg, #8c52ff, #5ce1e6);
     border-radius: 2px;
-    position: relative;
     animation: loadingProgress 2s ease 2.5s forwards;
 }
 
