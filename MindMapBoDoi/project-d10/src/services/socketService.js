@@ -19,17 +19,30 @@ class SocketService {
         return;
       }
 
+      // Clean up old socket if exists but not connected
+      if (this.socket && !this.isConnected) {
+        console.log('🧹 Cleaning up old socket');
+        this.socket.removeAllListeners();
+        this.socket.disconnect();
+        this.socket = null;
+      }
+
       const serverUrl = process.env.REACT_APP_API_URL || 'http://localhost:3000';
+      console.log('🔌 Creating new socket connection to:', serverUrl);
       
       this.socket = io(serverUrl, {
-        withCredentials: true, // Để gửi cookies/session
+        withCredentials: true,
         transports: ['websocket', 'polling'],
+        reconnection: true,
+        reconnectionDelay: 1000,
+        reconnectionAttempts: 5
       });
 
       this.socket.on('connect', () => {
         console.log('✅ Socket connected:', this.socket.id);
         this.isConnected = true;
-        resolve(this.socket);
+        // DON'T resolve yet - wait for authenticated
+        console.log('⏳ Waiting for authenticated event...');
       });
 
       this.socket.on('disconnect', (reason) => {
@@ -39,6 +52,8 @@ class SocketService {
 
       this.socket.on('authenticated', (data) => {
         console.log('🔐 Socket authenticated:', data);
+        console.log('✅ Server ready to receive events, resolving connect()');
+        resolve(this.socket); // Resolve ONLY after server is ready
       });
 
       this.socket.on('mindmap-error', (message) => {
@@ -73,9 +88,30 @@ class SocketService {
   // Join một mindmap room (trả về Promise khi đã sẵn sàng)
   joinMindmap(mindmapId) {
     return new Promise((resolve, reject) => {
-      if (!this.socket || !this.isConnected) {
-        console.error('❌ Socket not connected. Call connect() first.');
-        reject(new Error('socket-not-connected'));
+      console.log('\n🎯 ========== CLIENT JOIN REQUEST ==========');
+      console.log('🆔 Mindmap ID:', mindmapId);
+      console.log('🔌 Socket exists:', !!this.socket);
+      console.log('✅ Is connected:', this.isConnected);
+      console.log('🔒 Already joined:', this.joinedRoom);
+      console.log('📍 Current mindmap:', this.currentMindmapId);
+      
+      if (!this.socket) {
+        console.error('❌ Socket not initialized. Call connect() first.');
+        reject(new Error('socket-not-initialized'));
+        return;
+      }
+      
+      if (!this.isConnected) {
+        console.warn('⚠️ Socket not connected yet, waiting...');
+        // Wait for connection
+        const waitForConnection = () => {
+          if (this.isConnected) {
+            this.joinMindmap(mindmapId).then(resolve).catch(reject);
+          } else {
+            setTimeout(waitForConnection, 100);
+          }
+        };
+        setTimeout(waitForConnection, 100);
         return;
       }
 
@@ -96,28 +132,49 @@ class SocketService {
       this.joinedRoom = false;
       this.currentMindmapId = mindmapId;
 
+      let resolved = false;
+
       const onSuccess = (data) => {
-        if (data?.mindmapId !== mindmapId) return; // ignore other joins
+        console.log('📨 Received join-mindmap-success:', data);
+        if (resolved) return;
+        if (data?.mindmapId !== mindmapId) {
+          console.warn('⚠️ Received join ACK for different mindmap:', data?.mindmapId, 'expected:', mindmapId);
+          return;
+        }
         console.log('✅ Joined mindmap room successfully:', data);
         this.joinedRoom = true;
-        this.socket?.off('join-mindmap-success', onSuccess);
+        resolved = true;
         resolve(true);
       };
 
-      // Lắng nghe xác nhận từ server (một lần)
+      // ĐẶT LISTENER TRƯỚC
+      console.log('🔔 Registering join-mindmap-success listener');
       this.socket.once('join-mindmap-success', onSuccess);
 
-      // Gửi yêu cầu join
-      this.socket.emit('join-mindmap', { mindmapId });
+      // Emit ngay sau khi register listener (không cần delay)
+      console.log('📤 About to emit join-mindmap event');
+      console.log('🔌 Socket ID:', this.socket.id);
+      console.log('🔌 Socket connected:', this.socket.connected);
+      
+      try {
+        this.socket.emit('join-mindmap', { mindmapId });
+        console.log('✅ join-mindmap event emitted successfully');
+      } catch (error) {
+        console.error('❌ Failed to emit join-mindmap:', error);
+        reject(error);
+        return;
+      }
+      console.log('========================================\n');
 
-      // Fallback: resolve sau 1200ms nếu không nhận được response (đôi khi server trả ACK chậm)
+      // Fallback nhanh: resolve sau 500ms (server bình thường trả < 100ms)
       setTimeout(() => {
-        if (!this.joinedRoom && this.currentMindmapId === mindmapId) {
-          console.warn('⚠️ Join confirmation timeout, assuming success');
+        if (!resolved && this.currentMindmapId === mindmapId) {
+          console.log('✅ Auto-resolving join after 500ms (ACK might be missed but connection is stable)');
           this.joinedRoom = true;
+          resolved = true;
           resolve(true);
         }
-      }, 1200);
+      }, 500);
 
       // Safety timeout 5s
       setTimeout(() => {
@@ -143,8 +200,18 @@ class SocketService {
 
   // Gửi thay đổi mindmap (nodes/edges)
   sendMindmapChange(mindmapId, changes, changeType) {
-    if (!this.socket || !this.isConnected || !this.joinedRoom) {
-      console.warn('⚠️ Cannot send changes: socket not ready or not joined room');
+    if (!this.socket) {
+      console.error('❌ Socket not initialized');
+      return;
+    }
+    
+    if (!this.isConnected) {
+      console.warn('⚠️ Socket not connected, skipping broadcast');
+      return;
+    }
+    
+    if (!this.joinedRoom) {
+      console.warn('⚠️ Not joined room yet, skipping broadcast');
       return;
     }
 
@@ -152,23 +219,31 @@ class SocketService {
     this.socket.emit('mindmap-change', {
       mindmapId,
       changes,
-      changeType, // 'nodes' | 'edges' | 'both'
+      changeType,
     });
   }
 
   // Gửi cursor position
   sendCursorMove(mindmapId, cursor) {
-    if (!this.socket || !this.isConnected) return;
+    if (!this.socket) {
+      console.error('❌ Socket not initialized for cursor move');
+      return;
+    }
+    if (!this.isConnected || !this.joinedRoom) return;
 
     this.socket.emit('cursor-move', {
       mindmapId,
-      cursor, // { x, y }
+      cursor,
     });
   }
 
   // Gửi node selection
   sendNodeSelection(mindmapId, nodeIds) {
-    if (!this.socket || !this.isConnected) return;
+    if (!this.socket) {
+      console.error('❌ Socket not initialized for selection');
+      return;
+    }
+    if (!this.isConnected || !this.joinedRoom) return;
 
     this.socket.emit('node-select', {
       mindmapId,
@@ -179,7 +254,7 @@ class SocketService {
   // Lắng nghe events
   on(eventName, callback) {
     if (!this.socket) {
-      console.error('❌ Socket not initialized');
+      console.error(`❌ Socket not initialized when trying to register '${eventName}'`);
       return;
     }
 

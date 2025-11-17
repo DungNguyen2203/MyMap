@@ -170,90 +170,140 @@ function FlowContent({ onManualSave, isReadOnly = false }) {
 
   // --- COLLABORATIVE EDITING: Socket.IO Setup ---
   const [roomReady, setRoomReady] = useState(false);
+  const initializingRef = useRef(false);
+  const listenersRegisteredRef = useRef(false);
+  
   useEffect(() => {
     if (!currentMindmapId) return;
+    if (initializingRef.current) {
+      console.warn('⚠️ Socket init already in progress, skipping');
+      return;
+    }
 
     console.log('🔌 Connecting to collaborative session:', currentMindmapId);
-
+    
+    initializingRef.current = true;
     let mounted = true;
+    const cleanupListeners = [];
 
     // Connect socket và đợi kết nối xong
     const initSocket = async () => {
       try {
+        console.log('🚀 Starting socket connection...');
         await socketService.connect();
-        if (!mounted) return;
+        console.log('✅ Socket connected successfully');
+        
+        if (!mounted) {
+          console.log('⚠️ Component unmounted during connect, aborting');
+          return;
+        }
+
+        // Register listeners AFTER socket is connected
+        if (!listenersRegisteredRef.current) {
+          console.log('📝 Registering socket event listeners');
+          
+          const usersListHandler = (data) => {
+            console.log('👥 Online users:', data.users);
+            setOnlineUsers(data.users);
+          };
+          socketService.on('mindmap-users-list', usersListHandler);
+          cleanupListeners.push(() => socketService.off('mindmap-users-list', usersListHandler));
+
+          const userJoinedHandler = (data) => {
+            console.log('👋 User joined:', data.username);
+            addOnlineUser({ userId: data.userId, username: data.username });
+            message.info(`${data.username} vừa tham gia`);
+          };
+          socketService.on('user-joined-mindmap', userJoinedHandler);
+          cleanupListeners.push(() => socketService.off('user-joined-mindmap', userJoinedHandler));
+
+          const userLeftHandler = (data) => {
+            console.log('🚪 User left:', data.userId);
+            removeOnlineUser(data.userId);
+          };
+          socketService.on('user-left-mindmap', userLeftHandler);
+          cleanupListeners.push(() => socketService.off('user-left-mindmap', userLeftHandler));
+
+          const mindmapUpdateHandler = (data) => {
+            console.log('📝 Received mindmap update from:', data.userId);
+            console.log('📦 Update data:', { changeType: data.changeType, nodesCount: data.changes?.nodes?.length, edgesCount: data.changes?.edges?.length });
+            
+            suppressBroadcastRef.current = true;
+            applyRemoteChanges(data.changes, data.changeType);
+            
+            const currentState = useStore.getState();
+            handleSaveToDB.flush(currentState.nodes, currentState.edges);
+            
+            setTimeout(() => {
+              suppressBroadcastRef.current = false;
+              console.log('✅ Broadcast suppression lifted');
+            }, 250);
+          };
+          socketService.on('mindmap-update', mindmapUpdateHandler);
+          cleanupListeners.push(() => socketService.off('mindmap-update', mindmapUpdateHandler));
+
+          const cursorUpdateHandler = (data) => {
+            updateRemoteCursor(data.userId, data.cursor, data.username);
+          };
+          socketService.on('cursor-update', cursorUpdateHandler);
+          cleanupListeners.push(() => socketService.off('cursor-update', cursorUpdateHandler));
+
+          const selectionUpdateHandler = (data) => {
+            updateRemoteSelection(data.userId, data.nodeIds, data.username);
+          };
+          socketService.on('node-selection-update', selectionUpdateHandler);
+          cleanupListeners.push(() => socketService.off('node-selection-update', selectionUpdateHandler));
+          
+          listenersRegisteredRef.current = true;
+        }
+        
+        console.log('📞 Attempting to join room:', currentMindmapId);
         await socketService.joinMindmap(currentMindmapId);
-        if (!mounted) return;
+        
+        if (!mounted) {
+          console.log('⚠️ Component unmounted during join, aborting');
+          return;
+        }
+        
+        console.log('✅ Room join complete, setting ready');
         setRoomReady(true);
         setCollaborating(true);
       } catch (error) {
         console.error('❌ Failed to connect socket:', error);
+      } finally {
+        initializingRef.current = false;
       }
     };
 
     initSocket();
 
-    // Listen for online users list
-    socketService.on('mindmap-users-list', (data) => {
-      console.log('👥 Online users:', data.users);
-      setOnlineUsers(data.users);
-    });
-
-    // Listen for new user joined
-    socketService.on('user-joined-mindmap', (data) => {
-      console.log('👋 User joined:', data.username);
-      addOnlineUser({ userId: data.userId, username: data.username });
-      message.info(`${data.username} vừa tham gia`);
-    });
-
-    // Listen for user left
-    socketService.on('user-left-mindmap', (data) => {
-      console.log('🚪 User left:', data.userId);
-      removeOnlineUser(data.userId);
-    });
-
-    // Listen for mindmap updates
-    socketService.on('mindmap-update', (data) => {
-      console.log('📝 Received mindmap update from:', data.userId);
-      // Chặn broadcast cho đợt thay đổi do từ xa
-      suppressBroadcastRef.current = true;
-      applyRemoteChanges(data.changes, data.changeType);
-      
-      // Lưu ngay (không debounce) để đảm bảo persist nhanh
-      const currentState = useStore.getState();
-      handleSaveToDB.flush(currentState.nodes, currentState.edges);
-      
-      // Cho phép broadcast trở lại sau khi React đã render thay đổi
-      setTimeout(() => {
-        suppressBroadcastRef.current = false;
-      }, 250);
-    });
-
-    // Listen for cursor updates
-    socketService.on('cursor-update', (data) => {
-      updateRemoteCursor(data.userId, data.cursor, data.username);
-    });
-
-    // Listen for selection updates
-    socketService.on('node-selection-update', (data) => {
-      updateRemoteSelection(data.userId, data.nodeIds, data.username);
-    });
-
     // Cleanup on unmount
     return () => {
       mounted = false;
       console.log('🔌 Disconnecting from collaborative session');
-      socketService.leaveMindmap(currentMindmapId);
+      
+      // Clean up all listeners
+      cleanupListeners.forEach(cleanup => cleanup());
+      
+      if (socketService.socket && socketService.isConnected) {
+        socketService.leaveMindmap(currentMindmapId);
+      }
+      
       setRoomReady(false);
       setCollaborating(false);
       setOnlineUsers([]);
+      initializingRef.current = false;
+      listenersRegisteredRef.current = false;
     };
-  }, [currentMindmapId, setCollaborating, setOnlineUsers, addOnlineUser, removeOnlineUser, applyRemoteChanges, updateRemoteCursor, updateRemoteSelection, handleSaveToDB]);
+  }, [currentMindmapId]); // ONLY depend on currentMindmapId to prevent re-runs
 
   // Broadcast local changes to other users
   useEffect(() => {
     if (!currentMindmapId || !isLoaded || !roomReady) return;
-    if (suppressBroadcastRef.current) return; // Không phát lại thay đổi vừa nhận từ xa
+    if (suppressBroadcastRef.current) {
+      console.log('🚫 Broadcast suppressed (remote change)');
+      return;
+    }
 
     console.log('📤 Broadcasting changes to others');
     socketService.sendMindmapChange(currentMindmapId, { nodes, edges }, 'both');
