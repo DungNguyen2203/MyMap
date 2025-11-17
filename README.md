@@ -20,6 +20,17 @@
 
 ---
 
+## 🆕 What's New
+
+- 🚀 Real-time collaboration stabilized: join-ACK handling, rebroadcast protection, and instant persistence flush after remote updates for truly immediate sync.
+- 👥 Presence improvements: room-aware online users, live cursors, and selections are more reliable under reconnects.
+- 💾 Auto-save refinements: 1.5s debounced saves with on-demand flush when receiving remote edits (prevents data loss on reload).
+- 🔐 Password security: bcrypt hashing across auth flows with transparent legacy auto-migration on first successful login.
+- 🗂️ Cross-user access: viewing and saving now resolve to the owner’s collection automatically.
+- 🖥️ Windows helper: `run-electron.bat` to install/build as needed, start backend (dev/prod), and launch Electron in one step.
+
+---
+
 ## 📖 Overview
 
 MindTree is a modern web application that revolutionizes knowledge organization by automatically converting documents into interactive mind maps using advanced AI processing. Built with Node.js, Express, MongoDB, and React Flow, it offers **real-time collaboration**, intelligent document processing, and an intuitive visual interface.
@@ -217,6 +228,22 @@ MindTree is also available as a standalone desktop application using Electron!
 
 ### Building Desktop App
 
+#### Quick Run on Windows
+
+Use the helper script to build (if needed), start the backend, and launch Electron:
+
+```powershell
+cd D:\Demo\MyMap
+./run-electron.bat         # dev mode: nodemon backend + Electron
+./run-electron.bat prod    # prod mode: npm start backend + Electron
+```
+
+The script will:
+- Install root dependencies if missing
+- Build the React editor if `MindMapBoDoi\\project-d10\\build\\index.html` is absent
+- Start the backend in a new window (`dev` uses nodemon; `prod` uses npm start)
+- Launch the Electron shell pointed at `http://localhost:3000`
+
 **1. Ensure dependencies are installed**
 
 ```bash
@@ -373,8 +400,10 @@ MyMap/
 
 **Collaborative Editing Architecture:**
 - **Socket.IO Rooms**: Each mindmap has isolated room (`mindmap:{id}`)
-- **Event System**: `join-mindmap`, `leave-mindmap`, `mindmap-change`, `cursor-move`
+- **Event System**: `join-mindmap`, `join-mindmap-success` (ACK), `leave-mindmap`, `mindmap-change`, `cursor-move`, `node-select`
 - **State Management**: Zustand store tracks `onlineUsers`, `remoteCursors`, `remoteSelections`
+- **Rebroadcast Protection**: Remote-origin updates are applied locally without echoing back to the room
+- **Persistence**: Remote updates trigger an immediate save flush to the database
 - **Conflict Resolution**: Last-write-wins with instant broadcast (no retry)
 - **Performance**: Throttled cursor updates (100ms), debounced auto-save (1.5s)
 
