@@ -4,6 +4,7 @@ const { ObjectId } = require('mongodb');
 const crypto = require('crypto'); 
 const sendEmail = require('../utils/sendEmail.js');
 const { incrementFail, resetAttempts } = require('../middlewares/loginRateLimiter');
+const bcrypt = require('bcrypt');
 // Hiển thị trang đăng ký
 exports.getRegisterPage = (req, res) => {
     res.render('register', { pageTitle: 'Đăng ký' });
@@ -35,10 +36,14 @@ exports.postRegister = async (req, res) => {
             return res.redirect('/register');
         }
 
+        // Hash password với bcrypt
+        const saltRounds = 10;
+        const hashedPassword = await bcrypt.hash(password, saltRounds);
+
         const newUser = {
             email: email.toLowerCase().trim(),
             username: username.toLowerCase().trim(),
-            password: password, // Nên hash password
+            password: hashedPassword,
             avatar: "https://mediamart.vn/images/uploads/2022/713193b6-a8b3-471d-ab04-c38dae2c1da4.jpg",
             createdAt: new Date(),
             updatedAt: new Date()
@@ -89,7 +94,7 @@ exports.postLogin = async (req, res) => {
 
     const user = await userModel.findUserByEmail(usersDb, email);
 
-    if (!user || user.password !== password) {
+    if (!user) {
       try {
         await incrementFail(email);
       } catch (e) {
@@ -97,6 +102,53 @@ exports.postLogin = async (req, res) => {
       }
       req.flash('error_msg', 'Email hoặc mật khẩu không chính xác!');
       return res.redirect('/login');
+    }
+
+    // Kiểm tra password: hỗ trợ cả plaintext (legacy) và hashed
+    let isPasswordValid = false;
+    let needsMigration = false;
+
+    // Kiểm tra xem password đã được hash chưa (bcrypt hash bắt đầu bằng $2a$, $2b$, $2y$)
+    const isHashed = /^\$2[aby]\$/.test(user.password);
+
+    if (isHashed) {
+      // Password đã hash, dùng bcrypt.compare
+      isPasswordValid = await bcrypt.compare(password, user.password);
+    } else {
+      // Password còn plaintext (user cũ), so sánh trực tiếp
+      isPasswordValid = (user.password === password);
+      needsMigration = isPasswordValid; // Nếu đúng thì cần migrate
+    }
+
+    if (!isPasswordValid) {
+      try {
+        await incrementFail(email);
+      } catch (e) {
+        console.error('❌ Lỗi tăng bộ đếm login sai:', e);
+      }
+      req.flash('error_msg', 'Email hoặc mật khẩu không chính xác!');
+      return res.redirect('/login');
+    }
+
+    // Nếu password đúng nhưng chưa hash, tự động migrate
+    if (needsMigration) {
+      try {
+        const saltRounds = 10;
+        const hashedPassword = await bcrypt.hash(password, saltRounds);
+        await usersDb.collection('users').updateOne(
+          { _id: user._id },
+          { 
+            $set: { 
+              password: hashedPassword,
+              updatedAt: new Date()
+            } 
+          }
+        );
+        console.log(`🔄 Đã tự động migrate password cho user: ${user.email}`);
+      } catch (migrateErr) {
+        console.error('⚠️ Lỗi khi migrate password:', migrateErr);
+        // Không chặn login nếu migrate thất bại
+      }
     }
         
     try {
@@ -246,15 +298,16 @@ exports.postResetPassword = async (req, res) => {
       return res.redirect('/forgot-password');
     }
 
-    // 2. Lấy mật khẩu mới (KHÔNG BĂM)
-    const newPassword = password; // <-- LƯU TRỰC TIẾP MẬT KHẨU (RẤT NGUY HIỂM)
+    // 2. Hash mật khẩu mới với bcrypt
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
 
     // 3. Cập nhật mật khẩu mới và xóa token
     await usersDb.collection('users').updateOne(
       { _id: user._id },
       {
         $set: {
-          password: newPassword, // <-- LƯU MẬT KHẨU MỚI (DẠNG CHỮ)
+          password: hashedPassword,
           resetPasswordToken: undefined, // Xóa token
           resetPasswordExpires: undefined, // Xóa thời hạn
           updatedAt: new Date(),

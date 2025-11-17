@@ -256,7 +256,8 @@ exports.deleteMindmapPermanently = async (req, res) => {
 // === THÊM MỚI: Hàm xử lý lưu dữ liệu mindmap (nodes, edges) từ React ===
 exports.updateMindmapData = async (req, res) => {
     const db = req.app.locals.mindmapsDb;
-    const collectionName = req.session.user._id.toString(); // Lấy collection dựa trên user ID
+    const usersDb = req.app.locals.usersDb;
+    const currentUserId = req.session.user._id.toString();
     let mindmapObjectId;
 
     // --- 1. Lấy ID và Dữ liệu ---
@@ -279,61 +280,93 @@ exports.updateMindmapData = async (req, res) => {
     });
 
     // --- 2. Validate Dữ liệu (Cơ bản) ---
-    // Kiểm tra xem nodes và edges có phải là mảng không (có thể thêm kiểm tra kỹ hơn)
     if (!Array.isArray(nodes) || !Array.isArray(edges)) {
-        logger.warn('Invalid data format for mindmap update', { mindmapId: req.params.id, userId: collectionName });
+        logger.warn('Invalid data format for mindmap update', { mindmapId: req.params.id, userId: currentUserId });
         return fail(res, 400, 'INVALID_FORMAT', 'Dữ liệu gửi lên không đúng định dạng (nodes và edges phải là mảng).');
     }
 
     if (thumbnailUrl && typeof thumbnailUrl !== 'string') {
          console.warn(`Invalid thumbnailUrl format received for mindmap ${req.params.id}`);
-         // Không chặn request, nhưng có thể bỏ qua việc lưu URL nếu nó không hợp lệ
-         // Hoặc trả lỗi nếu thumbnailUrl là bắt buộc
-         // return res.status(400).json({ success: false, message: 'Định dạng URL thumbnail không hợp lệ.' });
     }
 
-    // --- 3. Cập nhật Database ---
+    // --- 3. Tìm collection chứa mindmap (tương tự GET) ---
     try {
-        // Tạo đối tượng $set động để chỉ cập nhật thumbnailUrl nếu nó được gửi lên
+        let ownerUserId = currentUserId;
+        let mindmap = await db.collection(currentUserId).findOne({ 
+            _id: mindmapObjectId, 
+            deleted: { $ne: true } 
+        });
+
+        // Nếu không tìm thấy trong collection của current user, tìm trong các collections khác
+        if (!mindmap) {
+            console.log('🔍 Mindmap không thuộc user hiện tại, tìm owner...');
+            
+            const allUsers = await usersDb.collection('users').find({}, { projection: { _id: 1 } }).toArray();
+            
+            for (const user of allUsers) {
+                const userId = user._id.toString();
+                if (userId === currentUserId) continue;
+                
+                try {
+                    mindmap = await db.collection(userId).findOne({ 
+                        _id: mindmapObjectId,
+                        deleted: { $ne: true }
+                    });
+                    
+                    if (mindmap) {
+                        ownerUserId = userId;
+                        console.log(`✅ Tìm thấy owner: ${userId}`);
+                        break;
+                    }
+                } catch (err) {
+                    continue;
+                }
+            }
+        }
+
+        if (!mindmap) {
+            logger.warn('Mindmap not found for data update', { mindmapId: req.params.id, userId: currentUserId });
+            return fail(res, 404, 'NOT_FOUND', 'Không tìm thấy mindmap hoặc mindmap đã ở trong thùng rác.');
+        }
+
+        // --- 4. Cập nhật vào collection của owner ---
         const updateFields = {
             nodes: nodes,
             edges: edges,
             updatedAt: new Date()
         };
-        // Chỉ thêm thumbnailUrl vào $set nếu nó tồn tại và là string
+        
         if (thumbnailUrl && typeof thumbnailUrl === 'string') {
-            updateFields.thumbnailUrl = thumbnailUrl; // <<<--- THÊM thumbnailUrl VÀO ĐÂY
-        } else {
-             console.log(`ThumbnailUrl not provided or invalid for mindmap ${req.params.id}, skipping update.`);
+            updateFields.thumbnailUrl = thumbnailUrl;
         }
 
-
-        const result = await db.collection(collectionName).updateOne(
+        const result = await db.collection(ownerUserId).updateOne(
             { _id: mindmapObjectId, deleted: { $ne: true } },
             {
-                $set: updateFields // <<<--- SỬ DỤNG ĐỐI TƯỢNG updateFields
+                $set: updateFields
             }
         );
 
         if (result.matchedCount === 0) {
-            logger.warn('Mindmap not found for data update', { mindmapId: req.params.id, userId: collectionName });
-            return fail(res, 404, 'NOT_FOUND', 'Không tìm thấy mindmap hoặc mindmap đã ở trong thùng rác.');
+            logger.warn('Mindmap not found for data update', { mindmapId: req.params.id, userId: ownerUserId });
+            return fail(res, 404, 'NOT_FOUND', 'Không tìm thấy mindmap.');
         }
 
         if (result.modifiedCount === 0 && result.upsertedCount === 0) {
-            logger.info('Mindmap data unchanged', { mindmapId: req.params.id, userId: collectionName });
+            logger.info('Mindmap data unchanged', { mindmapId: req.params.id, userId: ownerUserId });
             return ok(res, { message: 'Dữ liệu mindmap không thay đổi.', updated: false });
         }
 
         logger.info('Mindmap data updated successfully', { 
             mindmapId: req.params.id, 
-            userId: collectionName,
+            ownerId: ownerUserId,
+            editorId: currentUserId,
             hasThumbnail: !!updateFields.thumbnailUrl 
         });
         return ok(res, { message: 'Đã lưu sơ đồ thành công!', updated: true });
 
     } catch (error) {
-        logger.error('Lỗi khi cập nhật dữ liệu mindmap', { error, mindmapId: req.params.id, userId: collectionName });
+        logger.error('Lỗi khi cập nhật dữ liệu mindmap', { error, mindmapId: req.params.id, userId: currentUserId });
         return fail(res, 500, 'INTERNAL_ERROR', 'Lỗi server khi lưu sơ đồ.');
     }
 };

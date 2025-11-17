@@ -22,15 +22,16 @@
 
 ## 📖 Overview
 
-MindTree is a modern web application that revolutionizes knowledge organization by automatically converting documents into interactive mind maps using advanced AI processing. Built with Node.js, Express, MongoDB, and React Flow, it offers real-time collaboration, intelligent document processing, and an intuitive visual interface.
+MindTree is a modern web application that revolutionizes knowledge organization by automatically converting documents into interactive mind maps using advanced AI processing. Built with Node.js, Express, MongoDB, and React Flow, it offers **real-time collaboration**, intelligent document processing, and an intuitive visual interface.
 
 ### 🎯 Key Highlights
 
 - **🤖 AI Document Processing**: Upload PDF, DOCX, or images and automatically generate structured mind maps using multi-vendor AI (Google Gemini, OpenRouter, Hugging Face)
 - **🎨 Interactive Editor**: Drag-and-drop node-based interface with React Flow, featuring auto-layout, undo/redo, and real-time canvas updates
+- **👥 Real-Time Collaboration**: Multiple users can edit the same mindmap simultaneously like Canva/Figma with live cursors and presence indicators
 - **💬 Real-Time Chat**: Built-in Socket.IO chat system with friend management and online status tracking
 - **📁 Smart Organization**: Folder-based project management with soft delete and trash recovery
-- **🔐 Enterprise-Ready**: Session management, rate limiting, input validation, and structured logging with Winston
+- **🔐 Enterprise-Ready**: Bcrypt password hashing, session management, rate limiting, input validation, and structured logging with Winston
 
 ---
 
@@ -45,6 +46,9 @@ MindTree is a modern web application that revolutionizes knowledge organization 
 
 ### 🎨 Mind Map Editor
 - **React Flow Integration**: Professional node-based canvas with smooth interactions
+- **Real-Time Collaboration**: Multiple users can edit simultaneously with live cursors, presence indicators, and instant synchronization
+- **Online Presence**: See who's viewing/editing with avatars and online status
+- **Live Cursors**: Track other users' mouse movements in real-time with color-coded cursors
 - **Auto-Layout**: Dagre algorithm with horizontal (LR) layout direction
 - **Rich Editing**: Node styling, custom colors, edge connections
 - **Undo/Redo**: Temporal state management with Zustand + Zundo
@@ -53,6 +57,9 @@ MindTree is a modern web application that revolutionizes knowledge organization 
 - **Gradient Fallbacks**: 20 beautiful gradient themes for cards without thumbnails
 
 ### 👥 Collaboration & Chat
+- **Multi-User Editing**: Like Canva/Figma - multiple people can edit the same mindmap at once
+- **Socket.IO Rooms**: Isolated collaboration spaces per mindmap
+- **Conflict Resolution**: Last-write-wins strategy with instant broadcast
 - **Friend System**: Send/accept friend requests, manage connections
 - **Real-Time Chat**: Socket.IO powered messaging with online status indicators
 - **Session Sharing**: Persistent sessions across HTTP and WebSocket connections
@@ -345,13 +352,14 @@ MyMap/
 **Frontend Stack:**
 - **Pug Templates**: Server-rendered pages (dashboard, login, profile)
 - **React App**: Mind map editor at `/editor/:id` (built to `MindMapBoDoi/project-d10/build/`)
-- **Socket.IO Client**: Real-time chat and friend status updates
+- **Socket.IO Client**: Real-time collaboration (mindmap editing) + chat and friend status
+- **Zustand + Zundo**: State management with undo/redo and collaborative state
 - **Electron**: Desktop application wrapper (optional)
 
 **Backend Stack:**
 - **Express.js**: RESTful API + template rendering
 - **MongoDB Native Driver**: Database operations (note: models are reference schemas)
-- **Socket.IO**: WebSocket connections for chat
+- **Socket.IO**: WebSocket connections for real-time collaboration and chat
 - **Redis**: Job queue and session storage
 
 **Data Flow:**
@@ -361,6 +369,14 @@ MyMap/
 4. Markdown → Mind map conversion
 5. Store in user-specific MongoDB collection (`mindmapsDb.collection(userId)`)
 6. Render React app at `/editor/:id` for editing
+7. **Real-time sync**: All changes broadcast via Socket.IO to other users in same mindmap room
+
+**Collaborative Editing Architecture:**
+- **Socket.IO Rooms**: Each mindmap has isolated room (`mindmap:{id}`)
+- **Event System**: `join-mindmap`, `leave-mindmap`, `mindmap-change`, `cursor-move`
+- **State Management**: Zustand store tracks `onlineUsers`, `remoteCursors`, `remoteSelections`
+- **Conflict Resolution**: Last-write-wins with instant broadcast (no retry)
+- **Performance**: Throttled cursor updates (100ms), debounced auto-save (1.5s)
 
 **Desktop App Architecture:**
 - **Electron Main Process**: Manages app lifecycle, spawns Node.js server
@@ -374,6 +390,8 @@ MyMap/
 
 ### ✅ Implemented Security Features
 
+- **Password Hashing**: bcrypt with saltRounds=10 for secure password storage
+- **Auto Migration**: Legacy plaintext passwords automatically hashed on first login
 - **Input Validation**: Express-validator for all user inputs
 - **Rate Limiting**: Protection against brute-force attacks on login/register/upload
 - **Session Management**: Secure session handling with Redis store
@@ -385,8 +403,8 @@ MyMap/
 
 ### 🔧 Production Recommendations
 
+- [x] **Password Hashing**: ✅ Implemented bcrypt with migration script
 - [ ] **HTTPS**: Enable SSL/TLS certificates (Let's Encrypt recommended)
-- [ ] **Password Hashing**: Implement bcrypt for user passwords
 - [ ] **Database Indexes**: Add indexes on frequently queried fields
 - [ ] **Environment Isolation**: Separate dev/staging/production databases
 - [ ] **Secrets Management**: Use AWS Secrets Manager or HashiCorp Vault
@@ -551,12 +569,22 @@ Currently, the project relies on manual testing. Key test scenarios:
    - Manual save and redirect to dashboard
    - Undo/redo functionality
    - Layout changes (horizontal orientation)
+   - **Real-time collaboration**: Open 2+ tabs with same mindmap URL, verify live sync
+   - **Cursors**: Move mouse and see cursor on other tabs
+   - **Presence**: Verify avatars show online users
 
 4. **Chat System**
    - Send friend requests
    - Accept/reject requests
    - Real-time message delivery
    - Online status updates
+
+5. **Collaborative Editing**
+   - Open same mindmap in multiple browser tabs/windows
+   - Verify real-time node/edge changes sync
+   - Check live cursor tracking
+   - Test online user avatars display
+   - Verify conflict resolution (last write wins)
 
 ### Future: Automated Testing
 
@@ -760,6 +788,8 @@ purpose with or without fee is hereby granted, provided that the above
 copyright notice and this permission notice appear in all copies.
 ```
 
+For detailed information about the collaborative editing feature, see [COLLABORATIVE_EDITING.md](COLLABORATIVE_EDITING.md).
+
 ---
 
 ## 👥 Team
@@ -784,10 +814,12 @@ copyright notice and this permission notice appear in all copies.
 
 - **[@xyflow/react](https://reactflow.dev/)** - Powerful node-based UI framework
 - **[Zustand](https://github.com/pmndrs/zustand)** - Lightweight state management
+- **[Zundo](https://github.com/charkour/zundo)** - Undo/redo middleware for Zustand
 - **[Dagre](https://github.com/dagrejs/dagre)** - Graph layout algorithms
 - **[Socket.IO](https://socket.io/)** - Real-time bidirectional communication
 - **[Winston](https://github.com/winstonjs/winston)** - Versatile logging library
 - **[Express.js](https://expressjs.com/)** - Fast, unopinionated web framework
+- **[bcrypt](https://github.com/kelektiv/node.bcrypt.js)** - Secure password hashing
 
 ### AI Services
 
@@ -798,7 +830,7 @@ copyright notice and this permission notice appear in all copies.
 
 ### Inspiration
 
-Special thanks to the open-source community for continuous innovation in web technologies and AI-powered applications.
+Special thanks to the open-source community and platforms like **Canva**, **Figma**, and **Miro** for inspiring the collaborative editing experience.
 
 ---
 

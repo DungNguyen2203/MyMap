@@ -167,9 +167,63 @@ const storeCreator = (set, get) => ({
   isLoaded: false, // ✅ THÊM state để track đã load xong chưa
   currentMindmapId: null, // ✅ THÊM state để lưu ID mindmap hiện tại
 
+  // --- COLLABORATIVE EDITING STATE ---
+  onlineUsers: [], // Array of { userId, username, cursor }
+  remoteCursors: new Map(), // userId -> { x, y, username }
+  remoteSelections: new Map(), // userId -> { nodeIds, username }
+  isCollaborating: false,
+
   // ✅ THÊM setters
   setLoaded: (value) => set({ isLoaded: value }),
   setCurrentMindmapId: (id) => set({ currentMindmapId: id }),
+
+  // --- Collaborative setters ---
+  setOnlineUsers: (users) => set({ onlineUsers: users }),
+  
+  addOnlineUser: (user) => {
+    const { onlineUsers } = get();
+    if (!onlineUsers.find(u => u.userId === user.userId)) {
+      set({ onlineUsers: [...onlineUsers, user] });
+    }
+  },
+
+  removeOnlineUser: (userId) => {
+    const { onlineUsers, remoteCursors, remoteSelections } = get();
+    set({
+      onlineUsers: onlineUsers.filter(u => u.userId !== userId),
+      remoteCursors: new Map([...remoteCursors].filter(([id]) => id !== userId)),
+      remoteSelections: new Map([...remoteSelections].filter(([id]) => id !== userId)),
+    });
+  },
+
+  updateRemoteCursor: (userId, cursor, username) => {
+    const { remoteCursors } = get();
+    const newCursors = new Map(remoteCursors);
+    newCursors.set(userId, { ...cursor, username });
+    set({ remoteCursors: newCursors });
+  },
+
+  updateRemoteSelection: (userId, nodeIds, username) => {
+    const { remoteSelections } = get();
+    const newSelections = new Map(remoteSelections);
+    newSelections.set(userId, { nodeIds, username });
+    set({ remoteSelections: newSelections });
+  },
+
+  setCollaborating: (value) => set({ isCollaborating: value }),
+
+  // Apply remote changes từ users khác
+  applyRemoteChanges: (changes, changeType) => {
+    if (changeType === 'nodes' || changeType === 'both') {
+      const validatedNodes = validateAndFixNodes(changes.nodes || changes);
+      set({ nodes: validatedNodes });
+    }
+    
+    if (changeType === 'edges' || changeType === 'both') {
+      const validatedEdges = validateAndFixEdges(changes.edges || changes);
+      set({ edges: validatedEdges });
+    }
+  },
 
   // --- QUAN TRỌNG: Sửa hàm loadState ---
   loadState: (newState) => {
