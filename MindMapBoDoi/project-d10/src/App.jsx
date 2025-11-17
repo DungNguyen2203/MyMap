@@ -15,6 +15,9 @@ import VerticalToolbar from './components/VerticalToolbar';
 import ZoomToolbar from './components/ZoomToolbar';
 import CustomEdgeToolbar from './components/CustomEdgeToolbar';
 import DarkModeToggle from './components/DarkModeToggle';
+import CollaborativeAvatars from './components/CollaborativeAvatars';
+import RemoteCursor from './components/RemoteCursor';
+import socketService from './services/socketService';
 import './App.scss';
 import DrawAreaNode from './components/DrawAreaNode';
 import { markdownToMindmap } from './utils/markdownToMindmap';
@@ -72,7 +75,18 @@ function FlowContent({ onManualSave, isReadOnly = false }) {
     // ✅ Lấy từ store
     isLoaded,
     currentMindmapId, // ✅ Lấy từ store thay vì props
-    setSaveStatus // (Giả định bạn có hàm này trong store.js)
+    setSaveStatus, // (Giả định bạn có hàm này trong store.js)
+    // Collaborative state
+    onlineUsers,
+    remoteCursors,
+    remoteSelections,
+    setOnlineUsers,
+    addOnlineUser,
+    removeOnlineUser,
+    updateRemoteCursor,
+    updateRemoteSelection,
+    applyRemoteChanges,
+    setCollaborating,
   } = useStore();
 
   const reactFlowInstance = useReactFlow();
@@ -81,20 +95,23 @@ function FlowContent({ onManualSave, isReadOnly = false }) {
   const startPos = useRef(null);
   const previewRectRef = useRef(null);
   const wrapperRef = useRef(null);
+  // Cờ chặn broadcast ngay sau khi áp dụng thay đổi từ xa
+  const suppressBroadcastRef = useRef(false);
 
   // THÊM: Logic Auto-save và Manual-save
   const API_BASE = process.env.REACT_APP_API_URL || '';
   const isAutoSaving = useRef(false);
 
-  // Hàm gọi API để lưu vào CSDL
-  const handleSaveToDB = useCallback(debounce(async (nodesToSave, edgesToSave) => {
-    // Chỉ lưu nếu có ID, không đang lưu, và đã tải xong
-    if (!currentMindmapId || isAutoSaving.current || !isLoaded) {
-      console.log('⏭️ Skip save:', { currentMindmapId, isAutoSaving: isAutoSaving.current, isLoaded });
-      return;
-    }
+  // Hàm gọi API để lưu vào CSDL - ĐỊNH NGHĨA TRƯỚC để các useEffect khác có thể dùng
+  const handleSaveToDB = useCallback(
+    debounce(async (nodesToSave, edgesToSave) => {
+      // Chỉ lưu nếu có ID, không đang lưu, và đã tải xong
+      if (!currentMindmapId || isAutoSaving.current || !isLoaded) {
+        console.log('⏭️ Skip save:', { currentMindmapId, isAutoSaving: isAutoSaving.current, isLoaded });
+        return;
+      }
 
-    console.log('💾 Saving to DB:', { 
+      console.log('💾 Saving to DB:', { 
       mindmapId: currentMindmapId, 
       nodesCount: nodesToSave.length, 
       edgesCount: edgesToSave.length 
@@ -147,21 +164,129 @@ function FlowContent({ onManualSave, isReadOnly = false }) {
     } finally {
       isAutoSaving.current = false;
     }
-  }, 1500), [currentMindmapId, isLoaded, API_BASE, setSaveStatus]); // Delay 1.5s
+  }, 1500),
+    [currentMindmapId, isLoaded, API_BASE, setSaveStatus]
+  ); // Delay 1.5s
 
-  // Kích hoạt Auto-save - CHỈ khi user thay đổi, KHÔNG auto-save ngay sau load
-  const isInitialMount = useRef(true);
+  // --- COLLABORATIVE EDITING: Socket.IO Setup ---
+  const [roomReady, setRoomReady] = useState(false);
   useEffect(() => {
-    // Skip auto-save lần đầu tiên (khi vừa load xong)
-    if (isInitialMount.current) {
-      isInitialMount.current = false;
-      console.log('⏭️ Skip first auto-save after loading');
-      return;
+    if (!currentMindmapId) return;
+
+    console.log('🔌 Connecting to collaborative session:', currentMindmapId);
+
+    let mounted = true;
+
+    // Connect socket và đợi kết nối xong
+    const initSocket = async () => {
+      try {
+        await socketService.connect();
+        if (!mounted) return;
+        await socketService.joinMindmap(currentMindmapId);
+        if (!mounted) return;
+        setRoomReady(true);
+        setCollaborating(true);
+      } catch (error) {
+        console.error('❌ Failed to connect socket:', error);
+      }
+    };
+
+    initSocket();
+
+    // Listen for online users list
+    socketService.on('mindmap-users-list', (data) => {
+      console.log('👥 Online users:', data.users);
+      setOnlineUsers(data.users);
+    });
+
+    // Listen for new user joined
+    socketService.on('user-joined-mindmap', (data) => {
+      console.log('👋 User joined:', data.username);
+      addOnlineUser({ userId: data.userId, username: data.username });
+      message.info(`${data.username} vừa tham gia`);
+    });
+
+    // Listen for user left
+    socketService.on('user-left-mindmap', (data) => {
+      console.log('🚪 User left:', data.userId);
+      removeOnlineUser(data.userId);
+    });
+
+    // Listen for mindmap updates
+    socketService.on('mindmap-update', (data) => {
+      console.log('📝 Received mindmap update from:', data.userId);
+      // Chặn broadcast cho đợt thay đổi do từ xa
+      suppressBroadcastRef.current = true;
+      applyRemoteChanges(data.changes, data.changeType);
+      
+      // Lưu ngay (không debounce) để đảm bảo persist nhanh
+      const currentState = useStore.getState();
+      handleSaveToDB.flush(currentState.nodes, currentState.edges);
+      
+      // Cho phép broadcast trở lại sau khi React đã render thay đổi
+      setTimeout(() => {
+        suppressBroadcastRef.current = false;
+      }, 250);
+    });
+
+    // Listen for cursor updates
+    socketService.on('cursor-update', (data) => {
+      updateRemoteCursor(data.userId, data.cursor, data.username);
+    });
+
+    // Listen for selection updates
+    socketService.on('node-selection-update', (data) => {
+      updateRemoteSelection(data.userId, data.nodeIds, data.username);
+    });
+
+    // Cleanup on unmount
+    return () => {
+      mounted = false;
+      console.log('🔌 Disconnecting from collaborative session');
+      socketService.leaveMindmap(currentMindmapId);
+      setRoomReady(false);
+      setCollaborating(false);
+      setOnlineUsers([]);
+    };
+  }, [currentMindmapId, setCollaborating, setOnlineUsers, addOnlineUser, removeOnlineUser, applyRemoteChanges, updateRemoteCursor, updateRemoteSelection, handleSaveToDB]);
+
+  // Broadcast local changes to other users
+  useEffect(() => {
+    if (!currentMindmapId || !isLoaded || !roomReady) return;
+    if (suppressBroadcastRef.current) return; // Không phát lại thay đổi vừa nhận từ xa
+
+    console.log('📤 Broadcasting changes to others');
+    socketService.sendMindmapChange(currentMindmapId, { nodes, edges }, 'both');
+  }, [nodes, edges, currentMindmapId, isLoaded, roomReady]);
+
+  // Track cursor movement
+  const handleMouseMove = useCallback((event) => {
+    if (!currentMindmapId || !reactFlowInstance || !roomReady) return;
+
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const position = reactFlowInstance.screenToFlowPosition({
+      x: event.clientX - bounds.left,
+      y: event.clientY - bounds.top,
+    });
+
+    // Throttle cursor updates (send every 100ms)
+    if (!handleMouseMove.lastSent || Date.now() - handleMouseMove.lastSent > 100) {
+      socketService.sendCursorMove(currentMindmapId, position);
+      handleMouseMove.lastSent = Date.now();
     }
-    
-    // Auto-save khi có thay đổi thực sự
+  }, [currentMindmapId, reactFlowInstance, roomReady]);
+
+  // Track selection changes
+  useEffect(() => {
+    if (!currentMindmapId || !isLoaded || !roomReady) return;
+    socketService.sendNodeSelection(currentMindmapId, selectedNodeIds);
+  }, [selectedNodeIds, currentMindmapId, isLoaded, roomReady]);
+
+  // Kích hoạt Auto-save - Lưu mỗi khi có thay đổi
+  useEffect(() => {
+    // ✅ Auto-save khi đã load xong (cả local và remote changes đều cần lưu)
     if (isLoaded && nodes.length > 0) {
-      console.log('🔄 Auto-saving changes...');
+      console.log('🔄 Auto-saving changes...', { nodesCount: nodes.length, edgesCount: edges.length });
       handleSaveToDB(nodes, edges);
     }
   }, [nodes, edges, isLoaded, handleSaveToDB]);
@@ -379,7 +504,7 @@ function FlowContent({ onManualSave, isReadOnly = false }) {
 
   return (
     <>
-      <div className="reactflow-wrapper" ref={wrapperRef} onMouseDown={handlePaneMouseDown}>
+      <div className="reactflow-wrapper" ref={wrapperRef} onMouseDown={handlePaneMouseDown} onMouseMove={handleMouseMove}>
         <ReactFlow
           nodes={nodesToRender}
           edges={edges}
@@ -429,6 +554,14 @@ function FlowContent({ onManualSave, isReadOnly = false }) {
             </svg>
           )}
         </ReactFlow>
+        
+        {/* Collaborative Features */}
+        {!isReadOnly && onlineUsers.length > 0 && (
+          <CollaborativeAvatars users={onlineUsers} />
+        )}
+        {!isReadOnly && remoteCursors.size > 0 && (
+          <RemoteCursor cursors={remoteCursors} />
+        )}
       </div>
       {!isReadOnly && <ZoomToolbar />}
       {!isReadOnly && selectedEdgeId && edgeToolbarPosition && (

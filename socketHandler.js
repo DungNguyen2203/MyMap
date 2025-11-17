@@ -5,6 +5,9 @@ const logger = require('./utils/logger');
 // Map để lưu trạng thái online: userId (string) -> socketId
 const onlineUsers = new Map();
 
+// Map để track users đang chỉnh sửa mindmap: mindmapId -> Set of {userId, username, socketId, cursor}
+const mindmapRooms = new Map();
+
 module.exports = (io, usersDb, chatDb) => {
     // Lấy các collection cần thiết
     const messagesCollection = chatDb.collection('messages');
@@ -76,7 +79,141 @@ module.exports = (io, usersDb, chatDb) => {
         socket.emit('friends status', { onlineFriendIds: onlineFriendIds });
         console.log(`   📡 Sent online status of ${onlineFriendIds.length} friends back to ${currentUserIdString}.`);
 
-        // --- 3. Lắng nghe các sự kiện chat từ client ---
+        // --- 3. XỬ LÝ COLLABORATIVE MINDMAP EDITING ---
+
+        // Join một mindmap room
+        socket.on('join-mindmap', async (data) => {
+            if (!currentUserId || !data || !data.mindmapId) {
+                logger.warn('Invalid join-mindmap data', { userId: currentUserIdString, data });
+                return;
+            }
+
+            const { mindmapId } = data;
+            const username = socket.request.session?.user?.username || 'Anonymous';
+
+            try {
+                // Join socket room
+                socket.join(`mindmap:${mindmapId}`);
+
+                // Thêm user vào mindmap room tracking
+                if (!mindmapRooms.has(mindmapId)) {
+                    mindmapRooms.set(mindmapId, new Map());
+                }
+
+                const roomUsers = mindmapRooms.get(mindmapId);
+                roomUsers.set(currentUserIdString, {
+                    userId: currentUserIdString,
+                    username: username,
+                    socketId: socket.id,
+                    cursor: null,
+                    joinedAt: new Date()
+                });
+
+                // Lấy danh sách users đang online trong room
+                const activeUsers = Array.from(roomUsers.values()).map(u => ({
+                    userId: u.userId,
+                    username: u.username,
+                    cursor: u.cursor
+                }));
+
+                console.log(`🎨 User ${username} joined mindmap ${mindmapId}. Total in room: ${activeUsers.length}`);
+
+                // ✅ XÁC NHẬN join thành công cho client
+                socket.emit('join-mindmap-success', { mindmapId, activeUsers });
+
+                // Gửi danh sách users cho user mới join
+                socket.emit('mindmap-users-list', { users: activeUsers });
+
+                // Thông báo cho các users khác trong room
+                socket.to(`mindmap:${mindmapId}`).emit('user-joined-mindmap', {
+                    userId: currentUserIdString,
+                    username: username
+                });
+
+            } catch (error) {
+                logger.error('Error joining mindmap', { userId: currentUserIdString, mindmapId, error });
+                socket.emit('mindmap-error', 'Không thể join mindmap.');
+            }
+        });
+
+        // Leave mindmap room
+        socket.on('leave-mindmap', (data) => {
+            if (!data || !data.mindmapId) return;
+            const { mindmapId } = data;
+
+            socket.leave(`mindmap:${mindmapId}`);
+
+            if (mindmapRooms.has(mindmapId)) {
+                const roomUsers = mindmapRooms.get(mindmapId);
+                roomUsers.delete(currentUserIdString);
+
+                if (roomUsers.size === 0) {
+                    mindmapRooms.delete(mindmapId);
+                }
+
+                console.log(`🚪 User ${currentUserIdString} left mindmap ${mindmapId}`);
+
+                // Thông báo cho users khác
+                socket.to(`mindmap:${mindmapId}`).emit('user-left-mindmap', {
+                    userId: currentUserIdString
+                });
+            }
+        });
+
+        // Broadcast mindmap changes (nodes/edges update)
+        socket.on('mindmap-change', (data) => {
+            if (!data || !data.mindmapId) return;
+
+            const { mindmapId, changes, changeType } = data;
+
+            // Broadcast đến tất cả users khác trong room (không gửi lại cho chính mình)
+            socket.to(`mindmap:${mindmapId}`).emit('mindmap-update', {
+                userId: currentUserIdString,
+                changes: changes,
+                changeType: changeType, // 'nodes' | 'edges' | 'both'
+                timestamp: Date.now()
+            });
+
+            console.log(`📝 User ${currentUserIdString} made changes to mindmap ${mindmapId} (${changeType})`);
+        });
+
+        // Update cursor position
+        socket.on('cursor-move', (data) => {
+            if (!data || !data.mindmapId) return;
+
+            const { mindmapId, cursor } = data; // cursor: { x, y }
+
+            // Cập nhật cursor trong tracking
+            if (mindmapRooms.has(mindmapId)) {
+                const roomUsers = mindmapRooms.get(mindmapId);
+                const userInfo = roomUsers.get(currentUserIdString);
+                if (userInfo) {
+                    userInfo.cursor = cursor;
+                }
+            }
+
+            // Broadcast cursor position
+            socket.to(`mindmap:${mindmapId}`).emit('cursor-update', {
+                userId: currentUserIdString,
+                username: socket.request.session?.user?.username || 'Anonymous',
+                cursor: cursor
+            });
+        });
+
+        // Node selection (để hiển thị ai đang select node nào)
+        socket.on('node-select', (data) => {
+            if (!data || !data.mindmapId) return;
+
+            const { mindmapId, nodeIds } = data; // nodeIds: array of selected node IDs
+
+            socket.to(`mindmap:${mindmapId}`).emit('node-selection-update', {
+                userId: currentUserIdString,
+                username: socket.request.session?.user?.username || 'Anonymous',
+                nodeIds: nodeIds
+            });
+        });
+
+        // --- 4. Lắng nghe các sự kiện chat từ client ---
 
         // Lấy lịch sử chat
         socket.on('getChatHistory', async (data) => {
@@ -179,6 +316,25 @@ module.exports = (io, usersDb, chatDb) => {
         socket.on('disconnect', async (reason) => {
             console.log(`🔌 User disconnected: ${socket.id}. UserID: ${currentUserIdString}. Reason: ${reason}`);
             if (currentUserIdString) {
+                // Xóa khỏi tất cả mindmap rooms
+                mindmapRooms.forEach((roomUsers, mindmapId) => {
+                    if (roomUsers.has(currentUserIdString)) {
+                        roomUsers.delete(currentUserIdString);
+                        
+                        // Thông báo user rời khỏi room
+                        io.to(`mindmap:${mindmapId}`).emit('user-left-mindmap', {
+                            userId: currentUserIdString
+                        });
+
+                        console.log(`🚪 User ${currentUserIdString} auto-left mindmap ${mindmapId} on disconnect`);
+
+                        // Xóa room nếu trống
+                        if (roomUsers.size === 0) {
+                            mindmapRooms.delete(mindmapId);
+                        }
+                    }
+                });
+
                 // Xóa trạng thái online
                 onlineUsers.delete(currentUserIdString);
                 console.log(`🔴 User offline: ${currentUserIdString}. Total online: ${onlineUsers.size}`);

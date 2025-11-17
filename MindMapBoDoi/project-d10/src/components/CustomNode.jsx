@@ -70,6 +70,13 @@ function CustomNode({ id, data, selected, sourcePosition, targetPosition }) {
     }
   }, [isTexting]);
 
+  // Đồng bộ label nội bộ với data.label từ props khi có remote update
+  useEffect(() => {
+    if (!isTexting && typeof data.label !== 'undefined') {
+      setLabel(data.label);
+    }
+  }, [data.label, isTexting]);
+
   useEffect(() => {
     setNodeDraggable(id, !isEditing);
   }, [isEditing, id, setNodeDraggable]);

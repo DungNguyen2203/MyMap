@@ -4,6 +4,7 @@ const userModel = require('../models/userModel.js');
 const { sanitizeUser } = require('../utils/sanitizeUser');
 const { ok, fail } = require('../utils/apiResponse');
 const logger = require('../utils/logger');
+const bcrypt = require('bcrypt');
 
 // Hiển thị trang profile chính
 exports.getProfilePage = async (req, res) => {
@@ -146,11 +147,16 @@ exports.changePassword = async (req, res) => {
             req.flash('error_msg', 'Mật khẩu xác nhận không khớp.');
             return res.redirect('/profile/edit');
         }
+
+        // Hash password với bcrypt
+        const saltRounds = 10;
+        const hashedPassword = await bcrypt.hash(password, saltRounds);
+
         const result = await usersDb.collection('users').updateOne(
             { _id: userId },
             {
                 $set: {
-                    password: password, // TODO: Cần hash password bằng bcrypt
+                    password: hashedPassword,
                     updatedAt: new Date()
                 }
             }
