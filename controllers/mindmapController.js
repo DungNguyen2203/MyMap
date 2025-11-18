@@ -340,6 +340,7 @@ exports.updateMindmapData = async (req, res) => {
             updateFields.thumbnailUrl = thumbnailUrl;
         }
 
+        // Cập nhật vào collection của owner (user A)
         const result = await db.collection(ownerUserId).updateOne(
             { _id: mindmapObjectId, deleted: { $ne: true } },
             {
@@ -352,6 +353,54 @@ exports.updateMindmapData = async (req, res) => {
             return fail(res, 404, 'NOT_FOUND', 'Không tìm thấy mindmap.');
         }
 
+        // --- 5. Nếu editor khác owner, tạo/cập nhật bản sao vào collection của editor (user B) ---
+        if (currentUserId !== ownerUserId) {
+            console.log(`📋 Editor ${currentUserId} khác owner ${ownerUserId}, đang tạo/cập nhật bản sao...`);
+            
+            try {
+                // Kiểm tra xem đã có bản sao chưa
+                const existingCopy = await db.collection(currentUserId).findOne({ 
+                    _id: mindmapObjectId 
+                });
+
+                if (existingCopy) {
+                    // Cập nhật bản sao đã có
+                    await db.collection(currentUserId).updateOne(
+                        { _id: mindmapObjectId },
+                        { $set: updateFields }
+                    );
+                    console.log(`✅ Đã cập nhật bản sao trong collection của user ${currentUserId}`);
+                } else {
+                    // Tạo bản sao mới
+                    const mindmapCopy = {
+                        _id: mindmapObjectId,
+                        title: mindmap.title,
+                        content: mindmap.content || '',
+                        nodes: nodes,
+                        edges: edges,
+                        thumbnail: thumbnailUrl || mindmap.thumbnail || null,
+                        createdAt: mindmap.createdAt,
+                        updatedAt: new Date(),
+                        deleted: false,
+                        sharedFrom: ownerUserId,
+                        originalCreatedAt: mindmap.createdAt
+                    };
+                    
+                    await db.collection(currentUserId).insertOne(mindmapCopy);
+                    console.log(`✅ Đã tạo bản sao mới trong collection của user ${currentUserId}`);
+                }
+            } catch (copyError) {
+                // Log lỗi nhưng không fail request, vì đã lưu thành công ở owner
+                console.error('❌ Lỗi khi tạo/cập nhật bản sao:', copyError);
+                logger.error('Error creating/updating mindmap copy', { 
+                    error: copyError, 
+                    mindmapId: req.params.id, 
+                    ownerId: ownerUserId,
+                    editorId: currentUserId
+                });
+            }
+        }
+
         if (result.modifiedCount === 0 && result.upsertedCount === 0) {
             logger.info('Mindmap data unchanged', { mindmapId: req.params.id, userId: ownerUserId });
             return ok(res, { message: 'Dữ liệu mindmap không thay đổi.', updated: false });
@@ -361,6 +410,7 @@ exports.updateMindmapData = async (req, res) => {
             mindmapId: req.params.id, 
             ownerId: ownerUserId,
             editorId: currentUserId,
+            savedInBothCollections: currentUserId !== ownerUserId,
             hasThumbnail: !!updateFields.thumbnailUrl 
         });
         return ok(res, { message: 'Đã lưu sơ đồ thành công!', updated: true });

@@ -21,15 +21,16 @@ const CollaborativeAvatars = ({ users }) => {
           <Tooltip key={user.userId} title={user.username} placement="bottom">
             <Avatar
               size={36}
+              src={user.avatar ? user.avatar : undefined}
               style={{
-                backgroundColor: getColor(user.userId),
+                backgroundColor: user.avatar ? undefined : getColor(user.userId),
                 cursor: 'pointer',
                 marginLeft: -8,
                 border: '2px solid white'
               }}
-              icon={<UserOutlined />}
+              icon={!user.avatar ? <UserOutlined /> : undefined}
             >
-              {user.username ? user.username[0].toUpperCase() : 'U'}
+              {!user.avatar && user.username ? user.username[0].toUpperCase() : null}
             </Avatar>
           </Tooltip>
         ))}

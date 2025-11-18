@@ -96,6 +96,7 @@ module.exports = (io, usersDb, chatDb) => {
 
             const { mindmapId } = data;
             const username = socket.request.session?.user?.username || 'Anonymous';
+            const avatar = socket.request.session?.user?.avatar || null;
 
             try {
                 console.log(`🚪 Attempting to join room: mindmap:${mindmapId}`);
@@ -115,6 +116,7 @@ module.exports = (io, usersDb, chatDb) => {
                 roomUsers.set(currentUserIdString, {
                     userId: currentUserIdString,
                     username: username,
+                    avatar: avatar,
                     socketId: socket.id,
                     cursor: null,
                     joinedAt: new Date()
@@ -124,6 +126,7 @@ module.exports = (io, usersDb, chatDb) => {
                 const activeUsers = Array.from(roomUsers.values()).map(u => ({
                     userId: u.userId,
                     username: u.username,
+                    avatar: u.avatar,
                     cursor: u.cursor
                 }));
 
@@ -150,7 +153,8 @@ module.exports = (io, usersDb, chatDb) => {
                 // Thông báo cho các users khác trong room
                 socket.to(`mindmap:${mindmapId}`).emit('user-joined-mindmap', {
                     userId: currentUserIdString,
-                    username: username
+                    username: username,
+                    avatar: avatar
                 });
 
             } catch (error) {
@@ -235,6 +239,11 @@ module.exports = (io, usersDb, chatDb) => {
                 nodeIds: nodeIds
             });
         });
+
+        // ✅ QUAN TRỌNG: Emit 'authenticated' event SAU KHI đã đăng ký ALL listeners
+        // Để client biết server đã sẵn sàng nhận events
+        socket.emit('authenticated', { userId: currentUserIdString, username: socket.request.session?.user?.username });
+        console.log(`✅ Emitted 'authenticated' to client ${socket.id}`);
 
         // --- 4. Lắng nghe các sự kiện chat từ client ---
 

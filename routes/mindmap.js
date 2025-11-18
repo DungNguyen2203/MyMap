@@ -39,6 +39,7 @@ router.get('/:id/json', authMiddleware.checkLoggedIn, async (req, res) => {
         });
 
         // Bước 2: Nếu không tìm thấy, tìm trong tất cả collections (shared mindmap)
+        let originalOwnerId = null; // Lưu ID của owner gốc
         if (!mindmap) {
             console.log('🔍 Mindmap không thuộc user hiện tại, tìm trong các collections khác...');
             
@@ -58,11 +59,53 @@ router.get('/:id/json', authMiddleware.checkLoggedIn, async (req, res) => {
                     
                     if (mindmap) {
                         console.log(`✅ Tìm thấy mindmap trong collection của user: ${userId}`);
+                        originalOwnerId = userId; // Lưu lại owner gốc
                         break; // Tìm thấy rồi thì dừng
                     }
                 } catch (err) {
                     // Collection không tồn tại, bỏ qua
                     continue;
+                }
+            }
+            
+            // Bước 3: Nếu tìm thấy mindmap của người khác, tạo bản sao vào collection của current user
+            if (mindmap && originalOwnerId) {
+                console.log(`📋 Tạo bản sao mindmap vào collection của user ${currentUserId}...`);
+                
+                try {
+                    // Tạo bản sao với cùng _id để maintain link
+                    const mindmapCopy = {
+                        _id: mindmap._id,
+                        title: mindmap.title,
+                        content: mindmap.content || '',
+                        nodes: mindmap.nodes || [],
+                        edges: mindmap.edges || [],
+                        thumbnail: mindmap.thumbnail || null,
+                        createdAt: mindmap.createdAt,
+                        updatedAt: new Date(),
+                        deleted: false,
+                        sharedFrom: originalOwnerId, // Đánh dấu là được share từ user khác
+                        originalCreatedAt: mindmap.createdAt // Giữ lại thời gian tạo gốc
+                    };
+                    
+                    // Insert vào collection của current user
+                    await db.collection(currentUserId).insertOne(mindmapCopy);
+                    console.log(`✅ Đã tạo bản sao mindmap cho user ${currentUserId}`);
+                    
+                    // Cập nhật mindmap reference để trả về bản sao
+                    mindmap = mindmapCopy;
+                } catch (copyError) {
+                    // Nếu đã tồn tại (duplicate key), bỏ qua lỗi
+                    if (copyError.code === 11000) {
+                        console.log(`ℹ️ Mindmap đã tồn tại trong collection của user ${currentUserId}`);
+                        // Fetch lại từ collection của user hiện tại
+                        mindmap = await db.collection(currentUserId).findOne({ 
+                            _id: objectId,
+                            deleted: { $ne: true }
+                        });
+                    } else {
+                        throw copyError;
+                    }
                 }
             }
         }

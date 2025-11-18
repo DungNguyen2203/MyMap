@@ -1,4 +1,4 @@
-import React, { memo, useState, useEffect, useRef } from 'react';
+import React, { memo, useState, useEffect, useRef, useCallback } from 'react';
 import { Handle, Position, NodeResizer } from '@xyflow/react';
 import { useStore } from '../store/store';
 import CustomNodeToolbar from './CustomNodeToolbar';
@@ -31,22 +31,55 @@ function CustomNode({ id, data, selected, sourcePosition, targetPosition }) {
   const [isTexting, setIsTexting] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
 
-  const [label, setLabel] = useState(data.label);
+  // ✅ CHỈ dùng local state KHI đang edit, còn lại render từ props
+  const [editingLabel, setEditingLabel] = useState('');
   const textareaRef = useRef(null);
   const textSizerRef = useRef(null);
+
+  // ✅ Label hiển thị: nếu đang edit thì dùng editingLabel, không thì dùng data.label
+  const displayLabel = isTexting ? editingLabel : data.label;
+
+  // 🔥 Debounce timer for real-time broadcast
+  const broadcastTimerRef = useRef(null);
 
   // --- (Các hàm xử lý sự kiện: resize, double-click, blur, keydown) ---
   const handleResize = (event, params) => {
     updateNodeSize(id, { width: params.width });
   };
+
+  // 🔥 onChange: Broadcast text changes while typing (debounced 100ms)
+  const handleTextChange = useCallback((e) => {
+    const newText = e.target.value;
+    setEditingLabel(newText);
+
+    // Clear previous timer
+    if (broadcastTimerRef.current) {
+      clearTimeout(broadcastTimerRef.current);
+    }
+
+    // Debounce: Broadcast after 100ms of no typing
+    broadcastTimerRef.current = setTimeout(() => {
+      console.log(`⌨️ Broadcasting text change for node ${id}:`, newText);
+      updateNodeData(id, { label: newText });
+    }, 100);
+  }, [id, updateNodeData]);
   const handleDoubleClick = (e) => {
     e.stopPropagation();
+    setEditingLabel(data.label); // ✅ Copy data.label vào editing state
     setIsEditing(true);
     setIsTexting(true);
   };
   const handleBlur = () => {
-    if (data.label !== label) {
-      updateNodeData(id, { label });
+    // Clear debounce timer
+    if (broadcastTimerRef.current) {
+      clearTimeout(broadcastTimerRef.current);
+      broadcastTimerRef.current = null;
+    }
+
+    // ✅ So sánh với data.label (props) chứ không phải local state
+    if (data.label !== editingLabel) {
+      console.log(`💾 Final save on blur for node ${id}:`, editingLabel);
+      updateNodeData(id, { label: editingLabel });
     }
     setIsEditing(false);
     setIsTexting(false);
@@ -70,12 +103,8 @@ function CustomNode({ id, data, selected, sourcePosition, targetPosition }) {
     }
   }, [isTexting]);
 
-  // Đồng bộ label nội bộ với data.label từ props khi có remote update
-  useEffect(() => {
-    if (!isTexting && typeof data.label !== 'undefined') {
-      setLabel(data.label);
-    }
-  }, [data.label, isTexting]);
+  // ✅ KHÔNG CẦN sync label nữa vì render trực tiếp từ data.label!
+  // Remote updates sẽ tự động hiển thị qua displayLabel
 
   useEffect(() => {
     setNodeDraggable(id, !isEditing);
@@ -106,7 +135,7 @@ function CustomNode({ id, data, selected, sourcePosition, targetPosition }) {
     textSizer.style.fontFamily = s.fontFamily || 'Arial';
     textSizer.style.fontWeight = s.fontWeight || 'normal';
     textSizer.style.fontStyle = s.fontStyle || 'normal';
-    const currentText = (isTexting ? label : data.label) || ' ';
+    const currentText = displayLabel || ' ';
     textSizer.textContent = currentText + '\u200B';
     const newSize = {};
     let sizeChanged = false;
@@ -138,8 +167,7 @@ function CustomNode({ id, data, selected, sourcePosition, targetPosition }) {
       updateNodeSize(id, newSize);
     }
   }, [
-    label,
-    data.label,
+    displayLabel,
     isTexting,
     id,
     updateNodeSize,
@@ -253,8 +281,8 @@ function CustomNode({ id, data, selected, sourcePosition, targetPosition }) {
         <div className="node-label">{data.label || '...'}</div>
         <textarea
           ref={textareaRef}
-          value={label}
-          onChange={(e) => setLabel(e.target.value)}
+          value={displayLabel}
+          onChange={handleTextChange}
           // ...
           onBlur={handleBlur}
           onKeyDown={handleKeyDown}

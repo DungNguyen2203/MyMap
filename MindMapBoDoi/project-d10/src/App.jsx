@@ -87,6 +87,7 @@ function FlowContent({ onManualSave, isReadOnly = false }) {
     updateRemoteSelection,
     applyRemoteChanges,
     setCollaborating,
+    setBroadcastCallback, // ✅ Thêm setter cho broadcast callback
   } = useStore();
 
   const reactFlowInstance = useReactFlow();
@@ -172,6 +173,46 @@ function FlowContent({ onManualSave, isReadOnly = false }) {
   const [roomReady, setRoomReady] = useState(false);
   const initializingRef = useRef(false);
   const listenersRegisteredRef = useRef(false);
+
+  // Throttle broadcast để tránh spam (mỗi 150ms broadcast 1 lần)
+  const throttledBroadcast = useRef(null);
+  const pendingBroadcast = useRef(false);
+
+  const scheduleBroadcast = useCallback(() => {
+    const skipReasons = [];
+    if (!currentMindmapId) skipReasons.push('no mindmapId');
+    if (!isLoaded) skipReasons.push('not loaded');
+    if (!roomReady) skipReasons.push('room not ready');
+    if (suppressBroadcastRef.current) skipReasons.push('suppressed');
+    
+    if (skipReasons.length > 0) {
+      console.log('⏭️ Skip broadcast:', skipReasons.join(', '));
+      return;
+    }
+
+    // Nếu đang chờ broadcast, đánh dấu có thay đổi mới
+    if (throttledBroadcast.current) {
+      pendingBroadcast.current = true;
+      return;
+    }
+
+    // Broadcast ngay lập tức
+    const currentNodes = useStore.getState().nodes;
+    const currentEdges = useStore.getState().edges;
+    console.log('📤 Broadcasting changes to others:', { nodesCount: currentNodes.length, edgesCount: currentEdges.length });
+    socketService.sendMindmapChange(currentMindmapId, { nodes: currentNodes, edges: currentEdges }, 'both');
+
+    // Throttle: chặn broadcast trong 150ms tiếp theo
+    throttledBroadcast.current = setTimeout(() => {
+      throttledBroadcast.current = null;
+      
+      // Nếu có thay đổi pending, broadcast lại
+      if (pendingBroadcast.current) {
+        pendingBroadcast.current = false;
+        scheduleBroadcast();
+      }
+    }, 150);
+  }, [currentMindmapId, isLoaded, roomReady]);
   
   useEffect(() => {
     if (!currentMindmapId) return;
@@ -211,7 +252,7 @@ function FlowContent({ onManualSave, isReadOnly = false }) {
 
           const userJoinedHandler = (data) => {
             console.log('👋 User joined:', data.username);
-            addOnlineUser({ userId: data.userId, username: data.username });
+            addOnlineUser({ userId: data.userId, username: data.username, avatar: data.avatar });
             message.info(`${data.username} vừa tham gia`);
           };
           socketService.on('user-joined-mindmap', userJoinedHandler);
@@ -234,10 +275,10 @@ function FlowContent({ onManualSave, isReadOnly = false }) {
             const currentState = useStore.getState();
             handleSaveToDB.flush(currentState.nodes, currentState.edges);
             
+            // Clear suppress flag after 50ms
             setTimeout(() => {
               suppressBroadcastRef.current = false;
-              console.log('✅ Broadcast suppression lifted');
-            }, 250);
+            }, 50);
           };
           socketService.on('mindmap-update', mindmapUpdateHandler);
           cleanupListeners.push(() => socketService.off('mindmap-update', mindmapUpdateHandler));
@@ -297,17 +338,44 @@ function FlowContent({ onManualSave, isReadOnly = false }) {
     };
   }, [currentMindmapId]); // ONLY depend on currentMindmapId to prevent re-runs
 
-  // Broadcast local changes to other users
+  // Register broadcast callback when room is ready
   useEffect(() => {
-    if (!currentMindmapId || !isLoaded || !roomReady) return;
-    if (suppressBroadcastRef.current) {
-      console.log('🚫 Broadcast suppressed (remote change)');
-      return;
+    if (roomReady && currentMindmapId) {
+      console.log('📡 Registering broadcast callback for store updates');
+      const broadcastFn = () => {
+        scheduleBroadcast();
+      };
+      setBroadcastCallback(broadcastFn);
+    } else {
+      setBroadcastCallback(null);
     }
+    
+    return () => {
+      setBroadcastCallback(null);
+    };
+  }, [roomReady, currentMindmapId, scheduleBroadcast, setBroadcastCallback]);
 
-    console.log('📤 Broadcasting changes to others');
-    socketService.sendMindmapChange(currentMindmapId, { nodes, edges }, 'both');
-  }, [nodes, edges, currentMindmapId, isLoaded, roomReady]);
+  // Wrap onNodesChange để broadcast real-time
+  const handleNodesChange = useCallback((changes) => {
+    onNodesChange(changes);
+    scheduleBroadcast();
+  }, [onNodesChange, scheduleBroadcast]);
+
+  // Wrap onEdgesChange để broadcast real-time
+  const handleEdgesChange = useCallback((changes) => {
+    onEdgesChange(changes);
+    scheduleBroadcast();
+  }, [onEdgesChange, scheduleBroadcast]);
+
+  // Wrap onConnect để broadcast khi tạo edge mới
+  const handleConnect = useCallback((connection) => {
+    onConnect(connection);
+    
+    // Broadcast sau khi tạo connection
+    setTimeout(() => {
+      scheduleBroadcast();
+    }, 50); // Delay nhỏ để đảm bảo state đã update
+  }, [onConnect, scheduleBroadcast]);
 
   // Track cursor movement
   const handleMouseMove = useCallback((event) => {
@@ -556,11 +624,12 @@ function FlowContent({ onManualSave, isReadOnly = false }) {
     <>
       <div className="reactflow-wrapper" ref={wrapperRef} onMouseDown={handlePaneMouseDown} onMouseMove={handleMouseMove}>
         <ReactFlow
+          key={`rf-${nodes.map(n => n.data?.version || 0).join('-')}`}
           nodes={nodesToRender}
           edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
+          onNodesChange={handleNodesChange}
+          onEdgesChange={handleEdgesChange}
+          onConnect={handleConnect}
           nodeTypes={nodeTypes}
           fitView
           defaultZoom={1.0}

@@ -172,10 +172,12 @@ const storeCreator = (set, get) => ({
   remoteCursors: new Map(), // userId -> { x, y, username }
   remoteSelections: new Map(), // userId -> { nodeIds, username }
   isCollaborating: false,
+  broadcastCallback: null, // ✅ Callback để broadcast changes
 
   // ✅ THÊM setters
   setLoaded: (value) => set({ isLoaded: value }),
   setCurrentMindmapId: (id) => set({ currentMindmapId: id }),
+  setBroadcastCallback: (callback) => set({ broadcastCallback: callback }),
 
   // --- Collaborative setters ---
   setOnlineUsers: (users) => set({ onlineUsers: users }),
@@ -212,16 +214,69 @@ const storeCreator = (set, get) => ({
 
   setCollaborating: (value) => set({ isCollaborating: value }),
 
-  // Apply remote changes từ users khác
+  // Apply remote changes từ users khác - MERGE và FORCE RE-RENDER
   applyRemoteChanges: (changes, changeType) => {
+    console.log('🔄 Applying remote changes:', { changeType, changes });
+    
     if (changeType === 'nodes' || changeType === 'both') {
-      const validatedNodes = validateAndFixNodes(changes.nodes || changes);
-      set({ nodes: validatedNodes });
+      const remoteNodes = validateAndFixNodes(changes.nodes || changes);
+      const currentNodes = get().nodes;
+      
+      // ✅ Tạo Map để lookup nhanh
+      const remoteNodeMap = new Map(remoteNodes.map(n => [n.id, n]));
+      
+      // ✅ Force tạo NEW objects để React detect changes
+      const mergedNodes = currentNodes.map(localNode => {
+        const remoteNode = remoteNodeMap.get(localNode.id);
+        if (remoteNode) {
+          // ✅ Có remote update - merge và TẠO OBJECT MỚI HOÀN TOÀN
+          const oldLabel = localNode.data?.label || '';
+          const newLabel = remoteNode.data?.label || '';
+          console.log(`🔄 Updating node ${localNode.id}:`, `"${oldLabel}" -> "${newLabel}"`);
+          
+          // 🔥 FORCE RE-RENDER: Thêm version timestamp
+          return {
+            ...remoteNode,
+            position: remoteNode.position || localNode.position,
+            data: {
+              ...remoteNode.data,
+              version: Date.now(), // 🔥 Force React to detect change
+              style: {
+                ...localNode.data.style,
+                ...remoteNode.data.style
+              }
+            }
+          };
+        }
+        return localNode; // Không thay đổi
+      });
+      
+      // ✅ Thêm nodes mới từ remote (nếu có)
+      remoteNodes.forEach(remoteNode => {
+        if (!currentNodes.find(n => n.id === remoteNode.id)) {
+          console.log(`➕ Adding new node from remote: ${remoteNode.id}`);
+          mergedNodes.push(remoteNode);
+        }
+      });
+      
+      console.log(`✅ Merged nodes: ${currentNodes.length} local + ${remoteNodes.length} remote = ${mergedNodes.length} total`);
+      set({ nodes: mergedNodes });
     }
     
     if (changeType === 'edges' || changeType === 'both') {
-      const validatedEdges = validateAndFixEdges(changes.edges || changes);
-      set({ edges: validatedEdges });
+      const remoteEdges = validateAndFixEdges(changes.edges || changes);
+      const currentEdges = get().edges;
+      
+      // Simple replace for edges (less complex than nodes)
+      const edgeMap = new Map(currentEdges.map(e => [e.id, e]));
+      remoteEdges.forEach(remoteEdge => {
+        edgeMap.set(remoteEdge.id, { ...remoteEdge }); // ✅ Clone object
+      });
+      
+      const mergedEdges = Array.from(edgeMap.values());
+      
+      console.log(`✅ Merged edges: ${currentEdges.length} local + ${remoteEdges.length} remote = ${mergedEdges.length} total`);
+      set({ edges: mergedEdges });
     }
   },
 
@@ -491,6 +546,14 @@ const storeCreator = (set, get) => ({
         return node
       }),
     })
+    // ✅ Trigger broadcast sau khi update (callback sẽ tự check suppressBroadcastRef)
+    const callback = get().broadcastCallback;
+    console.log(`📡 Triggering broadcast callback after updateNodeData for node ${nodeId}, callback exists:`, !!callback);
+    if (callback) {
+      callback();
+    } else {
+      console.warn('⚠️ broadcastCallback is NULL! Cannot broadcast changes.');
+    }
   },
 
   toggleNodeStyle: (nodeId, styleKey) => {
@@ -646,6 +709,14 @@ const storeCreator = (set, get) => ({
         return node;
       })
     });
+    // ✅ Trigger broadcast sau khi update
+    const callback = get().broadcastCallback;
+    console.log('📡 updateNodesStyle: callback exists:', !!callback);
+    if (callback) {
+      callback();
+    } else {
+      console.warn('⚠️ updateNodesStyle: broadcastCallback is NULL!');
+    }
   },
 
   updateNodesData: (nodeIds, newData) => {
@@ -660,6 +731,14 @@ const storeCreator = (set, get) => ({
         return node;
       })
     });
+    // ✅ Trigger broadcast sau khi update
+    const callback = get().broadcastCallback;
+    console.log('📡 updateNodesData: callback exists:', !!callback);
+    if (callback) {
+      callback();
+    } else {
+      console.warn('⚠️ updateNodesData: broadcastCallback is NULL!');
+    }
   },
 
   toggleNodesStyle: (nodeIds, styleKey) => {
