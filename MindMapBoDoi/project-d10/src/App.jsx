@@ -98,6 +98,8 @@ function FlowContent({ onManualSave, isReadOnly = false }) {
   const wrapperRef = useRef(null);
   // Cờ chặn broadcast ngay sau khi áp dụng thay đổi từ xa
   const suppressBroadcastRef = useRef(false);
+  // ✅ Track đã fitView lần đầu chưa
+  const hasInitialFitViewRef = useRef(false);
 
   // THÊM: Logic Auto-save và Manual-save
   const API_BASE = process.env.REACT_APP_API_URL || '';
@@ -354,6 +356,18 @@ function FlowContent({ onManualSave, isReadOnly = false }) {
       setBroadcastCallback(null);
     };
   }, [roomReady, currentMindmapId, scheduleBroadcast, setBroadcastCallback]);
+
+  // ✅ FitView CHỈ 1 LẦN sau khi load xong
+  useEffect(() => {
+    if (isLoaded && nodes.length > 0 && !hasInitialFitViewRef.current && reactFlowInstance) {
+      // Chờ 100ms để đảm bảo nodes đã render xong
+      setTimeout(() => {
+        reactFlowInstance.fitView({ padding: 0.1, minZoom: 0.5, maxZoom: 1.5, duration: 300 });
+        hasInitialFitViewRef.current = true;
+        console.log('✅ Initial fitView completed');
+      }, 100);
+    }
+  }, [isLoaded, nodes.length, reactFlowInstance]);
 
   // Wrap onNodesChange để broadcast real-time
   const handleNodesChange = useCallback((changes) => {
@@ -631,9 +645,7 @@ function FlowContent({ onManualSave, isReadOnly = false }) {
           onEdgesChange={handleEdgesChange}
           onConnect={handleConnect}
           nodeTypes={nodeTypes}
-          fitView
           defaultZoom={1.0}
-          fitViewOptions={{ padding: 0.05, minZoom: 0.5, maxZoom: 1.5 }} // ✅ ZOOM GẦN HƠN NỮA
           onlyRenderVisibleElements
           panOnDrag={[2]}
           selectionOnDrag={!isReadOnly}

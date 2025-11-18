@@ -173,11 +173,13 @@ const storeCreator = (set, get) => ({
   remoteSelections: new Map(), // userId -> { nodeIds, username }
   isCollaborating: false,
   broadcastCallback: null, // ✅ Callback để broadcast changes
+  editingNodeId: null, // ✅ ID của node đang được edit
 
   // ✅ THÊM setters
   setLoaded: (value) => set({ isLoaded: value }),
   setCurrentMindmapId: (id) => set({ currentMindmapId: id }),
   setBroadcastCallback: (callback) => set({ broadcastCallback: callback }),
+  setEditingNodeId: (nodeId) => set({ editingNodeId: nodeId }),
 
   // --- Collaborative setters ---
   setOnlineUsers: (users) => set({ onlineUsers: users }),
@@ -221,12 +223,19 @@ const storeCreator = (set, get) => ({
     if (changeType === 'nodes' || changeType === 'both') {
       const remoteNodes = validateAndFixNodes(changes.nodes || changes);
       const currentNodes = get().nodes;
+      const editingNodeId = get().editingNodeId; // ✅ Lấy node đang edit
       
       // ✅ Tạo Map để lookup nhanh
       const remoteNodeMap = new Map(remoteNodes.map(n => [n.id, n]));
       
       // ✅ Force tạo NEW objects để React detect changes
       const mergedNodes = currentNodes.map(localNode => {
+        // 🚫 Bỏ qua node đang được edit để không bị gián đoạn
+        if (localNode.id === editingNodeId) {
+          console.log(`⛔ Skipping update for node ${localNode.id} (currently being edited)`);
+          return localNode;
+        }
+        
         const remoteNode = remoteNodeMap.get(localNode.id);
         if (remoteNode) {
           // ✅ Có remote update - merge và TẠO OBJECT MỚI HOÀN TOÀN

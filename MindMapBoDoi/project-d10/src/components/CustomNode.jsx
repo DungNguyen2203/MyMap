@@ -24,7 +24,7 @@ const isImageUrl = (text) => {
 function CustomNode({ id, data, selected, sourcePosition, targetPosition }) {
   // --- (Lấy state và actions từ store) ---
   const selectedNodeIds = useStore(s => s.selectedNodeIds);
-  const { updateNodeData, updateNodeSize, addMindMapNode, setNodeDraggable } = useStore();
+  const { updateNodeData, updateNodeSize, addMindMapNode, setNodeDraggable, setEditingNodeId } = useStore();
 
   // --- (State local của component) ---
   const [isEditing, setIsEditing] = useState(false);
@@ -68,6 +68,7 @@ function CustomNode({ id, data, selected, sourcePosition, targetPosition }) {
     setEditingLabel(data.label); // ✅ Copy data.label vào editing state
     setIsEditing(true);
     setIsTexting(true);
+    setEditingNodeId(id); // 🔒 Lock node khỏi remote updates
   };
   const handleBlur = () => {
     // Clear debounce timer
@@ -83,6 +84,7 @@ function CustomNode({ id, data, selected, sourcePosition, targetPosition }) {
     }
     setIsEditing(false);
     setIsTexting(false);
+    setEditingNodeId(null); // 🔓 Unlock - cho phép remote updates
   };
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
