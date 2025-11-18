@@ -359,7 +359,7 @@ function FlowContent({ onManualSave, isReadOnly = false }) {
 
   // ✅ FitView CHỈ 1 LẦN sau khi load xong
   useEffect(() => {
-    if (isLoaded && nodes.length > 0 && !hasInitialFitViewRef.current && reactFlowInstance) {
+    if (isLoaded && !hasInitialFitViewRef.current && reactFlowInstance && nodes.length > 0) {
       // Chờ 100ms để đảm bảo nodes đã render xong
       setTimeout(() => {
         reactFlowInstance.fitView({ padding: 0.1, minZoom: 0.5, maxZoom: 1.5, duration: 300 });
@@ -367,7 +367,7 @@ function FlowContent({ onManualSave, isReadOnly = false }) {
         console.log('✅ Initial fitView completed');
       }, 100);
     }
-  }, [isLoaded, nodes.length, reactFlowInstance]);
+  }, [isLoaded]); // ⚠️ CHỈ phụ thuộc vào isLoaded, KHÔNG phụ thuộc nodes.length
 
   // Wrap onNodesChange để broadcast real-time
   const handleNodesChange = useCallback((changes) => {
@@ -638,7 +638,6 @@ function FlowContent({ onManualSave, isReadOnly = false }) {
     <>
       <div className="reactflow-wrapper" ref={wrapperRef} onMouseDown={handlePaneMouseDown} onMouseMove={handleMouseMove}>
         <ReactFlow
-          key={`rf-${nodes.map(n => n.data?.version || 0).join('-')}`}
           nodes={nodesToRender}
           edges={edges}
           onNodesChange={handleNodesChange}
