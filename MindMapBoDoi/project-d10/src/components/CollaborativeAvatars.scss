@@ -2,7 +2,7 @@
 .collaborative-avatars {
   position: fixed;
   top: 20px;
-  right: 20px;
+  right: 70px; /* Dời sang trái để không che nút dark mode (40px width + 15px right + 15px gap) */
   z-index: 1000;
   background: white;
   padding: 10px 15px;
