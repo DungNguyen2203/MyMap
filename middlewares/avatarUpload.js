@@ -12,8 +12,8 @@ cloudinary.config({
 
 // Kiểm tra cấu hình Cloudinary
 if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
-  console.error('❌ CLOUDINARY credentials missing in .env file!');
-  console.error('Required: CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET');
+  console.warn('⚠️ CLOUDINARY credentials missing in .env file!');
+  console.warn('Avatar upload will not work without: CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET');
 }
 
 // Cấu hình lưu trữ multer với Cloudinary

@@ -24,6 +24,12 @@ services:
         sync: false
       - key: OPENROUTER_API_KEY
         sync: false
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
       - key: REDIS_URL
         fromService:
           type: redis

@@ -18,73 +18,152 @@ if (process.env.REDIS_URL) {
   console.log('📍 Using local Redis configuration');
 }
 
-// Khởi tạo Redis client
+// Khởi tạo Redis client với lazyConnect để không crash app
 const redis = new Redis(redisConfig, {
+  lazyConnect: true, // Không tự động connect, app sẽ không crash nếu Redis fail
   retryStrategy: (times) => {
-    if (times > 5) {
-      console.log('❌ Too many Redis reconnection attempts');
+    if (times > 3) {
+      console.log('⚠️ Redis reconnection attempts stopped');
       return null; // Stop retrying
     }
-    const delay = Math.min(times * 50, 2000);
+    const delay = Math.min(times * 1000, 3000);
     return delay;
   },
   maxRetriesPerRequest: 3,
-  enableReadyCheck: true,
-  connectTimeout: 10000,
+  enableReadyCheck: false,
+  connectTimeout: 5000,
+  enableOfflineQueue: false, // Không queue commands khi offline
 });
+
+// Attempt to connect to Redis
+let isRedisConnected = false;
+
+redis.connect()
+  .then(() => {
+    console.log('✅ Redis connected successfully!');
+    isRedisConnected = true;
+  })
+  .catch((err) => {
+    console.error('⚠️ Redis connection failed:', err.message);
+    console.log('⚠️ App will continue without Redis (jobs will use in-memory fallback)');
+    isRedisConnected = false;
+  });
 
 redis.on('connect', () => {
   console.log('✅ Redis connected successfully!');
+  isRedisConnected = true;
 });
 
 redis.on('error', (err) => {
-  console.error('❌ Redis connection error:', err.message);
-  if (process.env.NODE_ENV !== 'production') {
-    console.log('⚠️  Continuing without Redis in development mode');
-  }
+  console.error('⚠️ Redis error:', err.message);
+  isRedisConnected = false;
 });
 
-// Job Manager sử dụng Redis
+redis.on('close', () => {
+  console.log('⚠️ Redis connection closed');
+  isRedisConnected = false;
+});
+
+// Job Manager sử dụng Redis với fallback
 class JobManager {
   constructor(redisClient) {
     this.redis = redisClient;
     this.JOB_TTL = 10 * 60; // 10 phút
+    this.inMemoryJobs = new Map(); // Fallback khi Redis không có
+  }
+
+  isRedisAvailable() {
+    return isRedisConnected && this.redis.status === 'ready';
   }
 
   async createJob(jobId, jobData) {
-    const key = `job:${jobId}`;
-    await this.redis.setex(key, this.JOB_TTL, JSON.stringify(jobData));
-    console.log(`📝 Job created in Redis: ${jobId}`);
+    if (this.isRedisAvailable()) {
+      try {
+        const key = `job:${jobId}`;
+        await this.redis.setex(key, this.JOB_TTL, JSON.stringify(jobData));
+        console.log(`📝 Job created in Redis: ${jobId}`);
+        return jobId;
+      } catch (err) {
+        console.error('⚠️ Redis createJob failed, using in-memory:', err.message);
+      }
+    }
+    
+    // Fallback to in-memory
+    this.inMemoryJobs.set(jobId, { ...jobData, createdAt: Date.now() });
+    console.log(`📝 Job created in-memory: ${jobId}`);
     return jobId;
   }
 
   async getJob(jobId) {
-    const key = `job:${jobId}`;
-    const data = await this.redis.get(key);
-    if (!data) return null;
-    return JSON.parse(data);
+    if (this.isRedisAvailable()) {
+      try {
+        const key = `job:${jobId}`;
+        const data = await this.redis.get(key);
+        if (data) return JSON.parse(data);
+      } catch (err) {
+        console.error('⚠️ Redis getJob failed, using in-memory:', err.message);
+      }
+    }
+    
+    // Fallback to in-memory
+    return this.inMemoryJobs.get(jobId) || null;
   }
 
   async updateJob(jobId, updates) {
-    const key = `job:${jobId}`;
-    const existing = await this.getJob(jobId);
+    if (this.isRedisAvailable()) {
+      try {
+        const key = `job:${jobId}`;
+        const existing = await this.getJob(jobId);
+        if (!existing) {
+          throw new Error(`Job ${jobId} not found`);
+        }
+        const updated = { ...existing, ...updates };
+        await this.redis.setex(key, this.JOB_TTL, JSON.stringify(updated));
+        return updated;
+      } catch (err) {
+        console.error('⚠️ Redis updateJob failed, using in-memory:', err.message);
+      }
+    }
+    
+    // Fallback to in-memory
+    const existing = this.inMemoryJobs.get(jobId);
     if (!existing) {
       throw new Error(`Job ${jobId} not found`);
     }
     const updated = { ...existing, ...updates };
-    await this.redis.setex(key, this.JOB_TTL, JSON.stringify(updated));
+    this.inMemoryJobs.set(jobId, updated);
     return updated;
   }
 
   async deleteJob(jobId) {
-    const key = `job:${jobId}`;
-    await this.redis.del(key);
-    console.log(`🗑️ Job deleted from Redis: ${jobId}`);
+    if (this.isRedisAvailable()) {
+      try {
+        const key = `job:${jobId}`;
+        await this.redis.del(key);
+        console.log(`🗑️ Job deleted from Redis: ${jobId}`);
+        return;
+      } catch (err) {
+        console.error('⚠️ Redis deleteJob failed, using in-memory:', err.message);
+      }
+    }
+    
+    // Fallback to in-memory
+    this.inMemoryJobs.delete(jobId);
+    console.log(`🗑️ Job deleted from in-memory: ${jobId}`);
   }
 
   async getAllJobIds() {
-    const keys = await this.redis.keys('job:*');
-    return keys.map(k => k.replace('job:', ''));
+    if (this.isRedisAvailable()) {
+      try {
+        const keys = await this.redis.keys('job:*');
+        return keys.map(k => k.replace('job:', ''));
+      } catch (err) {
+        console.error('⚠️ Redis getAllJobIds failed, using in-memory:', err.message);
+      }
+    }
+    
+    // Fallback to in-memory
+    return Array.from(this.inMemoryJobs.keys());
   }
 }
 
