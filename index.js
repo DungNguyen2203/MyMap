@@ -18,6 +18,9 @@ const profileRoutes = require('./routes/profileRoutes.js');
 const mindmapRoutes = require('./routes/mindmap');
 const friendRoutes = require('./routes/friendRoutes.js');
 
+const reactBuildDir = path.join(__dirname, 'front-end', 'build');
+const reactIndexFile = path.join(reactBuildDir, 'index.html');
+
 const uri = process.env.MONGO_URI;
 if (!uri) {
   console.error("❌ Lỗi: MONGO_URI chưa được thiết lập trong file .env");
@@ -141,16 +144,20 @@ async function startServer() {
     });
 
     // === ƯU TIÊN 3: Route đặc biệt để phục vụ React App ===
-    // Chỉ xử lý khi truy cập đúng đường dẫn /import/:id
-    app.get('/import/:id', (req, res) => {
-      console.log(`➡️ Serving React App for /import/${req.params.id}`);
-      res.sendFile(path.join(__dirname, 'MindMapBoDoi', 'project-d10', 'build', 'index.html'));
+    // Phục vụ các route React Router bằng cùng file index.html
+    app.get(['/import/:id', '/editor/:id', '/cyto/:id'], (req, res, next) => {
+      console.log(`➡️ Serving React App for ${req.originalUrl}`);
+      res.sendFile(reactIndexFile, (err) => {
+        if (err) {
+          return next(err);
+        }
+      });
     });
     console.log("✅ React Specific Route Set!"); // Log 7a
 
     // === ƯU TIÊN 4: Phục vụ các file tĩnh (CSS, JS) từ thư mục build của React ===
     // Chỉ xử lý nếu request không khớp các route trên VÀ là file trong thư mục build
-    app.use(express.static(path.join(__dirname, 'MindMapBoDoi', 'project-d10', 'build')));
+    app.use(express.static(reactBuildDir));
     console.log("✅ React Static Files Serving Set!"); // Log 7b
 
 
@@ -161,7 +168,7 @@ async function startServer() {
         // bạn có thể thêm logic kiểm tra ở đây và gửi index.html của React
         // if (req.method === 'GET' && !req.originalUrl.startsWith('/api') && !req.path.includes('.')) {
         //   console.log(`➡️ Serving React App index.html as fallback for ${req.originalUrl}`);
-        //   return res.sendFile(path.join(__dirname, 'MindMapBoDoi', 'project-d10', 'build', 'index.html'));
+        //   return res.sendFile(reactIndexFile);
         // }
 
         // Nếu không, trả về trang 404 Pug
@@ -177,14 +184,28 @@ async function startServer() {
     // === Xử lý lỗi 500 (đặt cuối cùng) ===
     app.use((error, req, res, next) => {
       console.error('Server Error:', error);
-      // Tránh gửi response nếu header đã được gửi (ví dụ: lỗi trong stream)
       if (res.headersSent) {
         return next(error);
       }
-      res.status(500).render('500', {
-        pageTitle: 'Lỗi Server',
-        user: req.session.user // Vẫn cố gắng truyền user nếu có thể
-      });
+
+      const errorMessage = process.env.NODE_ENV === 'production'
+        ? null
+        : (error && error.message ? error.message : 'Unknown server error');
+
+      res.status(500);
+      try {
+        return res.render('500', {
+          pageTitle: 'Lỗi Server',
+          user: req.session.user,
+          errorMessage,
+        });
+      } catch (renderError) {
+        console.error('Render 500 view failed:', renderError);
+        if (req.originalUrl && req.originalUrl.startsWith('/api')) {
+          return res.json({ success: false, error: 'Lỗi server nội bộ.' });
+        }
+        return res.send('Internal Server Error');
+      }
     });
 
     // === Khởi động server ===

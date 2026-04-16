@@ -6,6 +6,23 @@
  */
 
 export const markdownToMindmap = (markdownContent) => {
+  if (typeof markdownContent !== 'string' || markdownContent.trim() === '') {
+    return {
+      nodes: [
+        {
+          id: 'node-1',
+          type: 'custom',
+          position: { x: 0, y: 0 },
+          data: {
+            label: 'Mindmap moi',
+            style: getStyleByLevel(1),
+          },
+        },
+      ],
+      edges: [],
+    };
+  }
+
   const lines = markdownContent.split('\n').filter(line => line.trim());
   const nodes = [];
   const edges = [];

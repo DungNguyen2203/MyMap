@@ -1,0 +1,13 @@
+extends ./layouts/default.pug
+
+block main
+  .container.py-5
+    .row.justify-content-center
+      .col-lg-8
+        .card.shadow-sm.border-0
+          .card-body.text-center.py-5
+            h1.display-5.fw-bold.text-danger.mb-3 Lỗi 500
+            p.lead.mb-4 Đã xảy ra lỗi phía máy chủ. Vui lòng thử lại sau.
+            if errorMessage
+              p.text-muted.small.mb-4 #{errorMessage}
+            a.btn.btn-primary(href='/dashboard') Quay về Dashboard

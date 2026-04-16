@@ -162,7 +162,11 @@ const storeCreator = (set, get) => ({
   patternColor: '#ccc', 
   appMode: 'normal', 
   activeDrawAreaId: null,
-  currentDrawTool: { mode: 'cursor' }, 
+  currentDrawTool: { mode: 'cursor' },
+  // === THÊM MỚI: State cho việc tải mindmap ===
+  isLoaded: false,
+  currentMindmapId: null,
+  saveStatus: 'idle', // 'idle', 'saving', 'saved', 'error' 
 
   // --- QUAN TRỌNG: Sửa hàm loadState ---
   loadState: (newState) => {
@@ -238,6 +242,10 @@ const storeCreator = (set, get) => ({
   toggleMiniMap: () => set((state) => ({ isMiniMapVisible: !state.isMiniMapVisible })),
   setNeedsFitView: (value) => set({ needsFitView: value }),
   toggleSearchVisible: () => set((state) => ({ isSearchVisible: !state.isSearchVisible })),
+  // === THÊM MỚI: Setter functions cho mindmap loading ===
+  setLoaded: (value) => set({ isLoaded: value }),
+  setCurrentMindmapId: (id) => set({ currentMindmapId: id }),
+  setSaveStatus: (status) => set({ saveStatus: status }),
   
   setSelectedEdgeId: (edgeId, position = null) => {
     set({

@@ -103,7 +103,7 @@ function FlowContent({ currentMindmapId, onManualSave }) {
          thumbnailUrl = await toPng(viewport, { width: 300, height: 200, cacheBust: true, pixelRatio: 1 });
       }
 
-      const response = await fetch(`${REACT_APP_API_URL || 'http://localhost:3000'}/mindmaps/${currentMindmapId}/save`, {
+      const response = await fetch(`${REACT_APP_API_URL || ''}/mindmaps/${currentMindmapId}/save`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }, 
         body: JSON.stringify({
@@ -333,12 +333,12 @@ function FlowContent({ currentMindmapId, onManualSave }) {
 function MindmapEditor() {
   const darkMode = useStore((s) => s.darkMode);
 
-  // SỬA: Lấy ID từ URL và tạo ref cho nút lưu thủ công
+  // SỨA: Lấy ID từ URL và tạo ref cho nút lưu thủ công
   const { id } = useParams();
   const manualSaveRef = useRef(null);
   
   // THÊM: Tải mindmap khi component mount (nếu chưa có trong store)
-  const { isLoaded, setLoaded, loadState, nodes, setCurrentMindmapId } = useStore();
+  const { isLoaded, setLoaded, loadState, nodes, setCurrentMindmapId, currentMindmapId } = useStore();
   
   useEffect(() => {
     // Chỉ tải nếu chưa tải, hoặc ID không khớp
@@ -346,7 +346,7 @@ function MindmapEditor() {
       const fetchMindmap = async () => {
          try {
             if(setLoaded) setLoaded(false);
-            const res = await fetch(`http://localhost:3000/mindmaps/${id}/json`, { credentials: 'include' });
+            const res = await fetch(`/mindmaps/${id}/json`, { credentials: 'include' });
             if (!res.ok) throw new Error('Không thể tải mindmap');
             const data = await res.json();
             if (!data.success || !data.data) throw new Error('Dữ liệu không hợp lệ');
@@ -355,7 +355,8 @@ function MindmapEditor() {
             if (data.data.nodes && data.data.nodes.length > 0) {
               loadState({ nodes: data.data.nodes, edges: data.data.edges });
             } else {
-              const { nodes, edges } = markdownToMindmap(data.data.content);
+              const safeMarkdown = typeof data.data.content === 'string' ? data.data.content : '# Mindmap moi';
+              const { nodes, edges } = markdownToMindmap(safeMarkdown);
               loadState({ nodes, edges });
             }
             if(setCurrentMindmapId) setCurrentMindmapId(id);
@@ -404,7 +405,7 @@ function ImportMindmap() {
       setLoading(true);
       if (setLoaded) setLoaded(false); // Báo là đang tải
       
-      const res = await fetch(`http://localhost:3000/mindmaps/${id}/json`, { credentials: 'include' });
+      const res = await fetch(`/mindmaps/${id}/json`, { credentials: 'include' });
       if (!res.ok) throw new Error('Không thể tải nội dung mindmap từ server');
       
       const data = await res.json();
@@ -417,7 +418,7 @@ function ImportMindmap() {
         edges = data.data.edges || [];
       } else {
         // Nếu không, chuyển đổi từ markdown
-        const markdownText = data.data.content;
+        const markdownText = typeof data.data.content === 'string' ? data.data.content : '# Mindmap moi';
         const result = markdownToMindmap(markdownText);
         nodes = result.nodes;
         edges = result.edges;
@@ -481,7 +482,7 @@ function CytoscapeViewer() {
   const { id } = useParams();
   const [markdown, setMarkdown] = useState('');
   useEffect(() => {
-    fetch(`http://localhost:3000/mindmaps/${id}/json`, { credentials: 'include' })
+    fetch(`/mindmaps/${id}/json`, { credentials: 'include' })
       .then((res) => res.json())
       .then((data) => setMarkdown(data.data?.content || ''))
       .catch(console.error);

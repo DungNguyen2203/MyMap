@@ -31,11 +31,13 @@ exports.createMindmap = async (req, res) => {
         const insertResult = await db.collection(collectionName).insertOne(newMindmapDocument);
         console.log(`Mindmap saved successfully for user ${collectionName}, ID: ${insertResult.insertedId}`);
 
-        // === SỬA Ở ĐÂY: Trả về JSON báo thành công KÈM THEO redirectUrl ===
+        // === SỬA Ở ĐÂY: Trả về JSON báo thành công KÈM THEO insertedId và redirectUrl ===
         // req.flash('success_msg', 'Mindmap đã được lưu thành công!'); // Flash message không hoạt động với fetch API
         // res.redirect('/dashboard'); // Không redirect trực tiếp từ API
         res.status(201).json({
+            success: true,
             message: 'Mindmap đã được lưu thành công!',
+            mindmapId: insertResult.insertedId.toString(), // ✨ THÊM: Trả về ID
             redirectUrl: '/dashboard' // Frontend sẽ dùng URL này để chuyển trang
         });
 
