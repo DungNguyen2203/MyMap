@@ -60,7 +60,7 @@ block main
                   .mb-3.text-center
                     .avatar-preview-wrapper(style="position: relative; display: inline-block;")
                       img#avatarPreview.rounded-circle.mb-3(
-                        src=user.avatar || '/images/default-avatar.png',
+                        src=user.avatar || '/images/default-avatar.svg',
                         alt="Xem trước avatar",
                         width="150",
                         height="150",
@@ -194,7 +194,7 @@ block scripts
       const fileNameAvatar = document.getElementById('fileNameAvatar');
       const saveAvatarBtn = document.getElementById('saveAvatarBtn');
       const btnClosePreview = document.getElementById('btnClosePreview');
-      const originalAvatarSrc = avatarPreview ? avatarPreview.src : '/images/default-avatar.png';
+      const originalAvatarSrc = avatarPreview ? avatarPreview.src : '/images/default-avatar.svg';
 
       if (avatarInput && avatarPreview && fileNameAvatar && saveAvatarBtn && btnClosePreview) {
         avatarInput.addEventListener('change', function(event) {

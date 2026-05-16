@@ -96,20 +96,12 @@ function FlowContent({ currentMindmapId, onManualSave }) {
     if (setSaveStatus) setSaveStatus('saving');
 
     try {
-      const { toPng } = await import('html-to-image');
-      const viewport = document.querySelector('.react-flow__viewport');
-      let thumbnailUrl = null;
-      if (viewport) {
-         thumbnailUrl = await toPng(viewport, { width: 300, height: 200, cacheBust: true, pixelRatio: 1 });
-      }
-
       const response = await fetch(`${REACT_APP_API_URL || ''}/mindmaps/${currentMindmapId}/save`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }, 
         body: JSON.stringify({
           nodes: nodesToSave,
           edges: edgesToSave,
-          thumbnailUrl: thumbnailUrl // Gửi cả thumbnail
         }),
       });
 

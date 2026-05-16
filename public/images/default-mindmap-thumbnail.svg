@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 180" role="img" aria-label="Default mindmap thumbnail">
+  <rect width="300" height="180" rx="14" fill="#f8fbff"/>
+  <path d="M96 90 C132 42 170 42 206 72" fill="none" stroke="#94a3b8" stroke-width="5" stroke-linecap="round"/>
+  <path d="M96 90 C132 138 170 138 206 108" fill="none" stroke="#94a3b8" stroke-width="5" stroke-linecap="round"/>
+  <rect x="32" y="64" width="92" height="52" rx="14" fill="#dff7ff" stroke="#168aad" stroke-width="4"/>
+  <rect x="194" y="44" width="74" height="40" rx="12" fill="#ffe2e2" stroke="#d94848" stroke-width="4"/>
+  <rect x="194" y="96" width="74" height="40" rx="12" fill="#dcfce7" stroke="#2f9e44" stroke-width="4"/>
+  <circle cx="78" cy="90" r="7" fill="#168aad"/>
+  <circle cx="231" cy="64" r="5" fill="#d94848"/>
+  <circle cx="231" cy="116" r="5" fill="#2f9e44"/>
+</svg>

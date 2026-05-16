@@ -998,3 +998,87 @@
     background-color: #f8f9fa; /* Màu nền khi ảnh chưa tải/lỗi */
 }
 
+.mindmap-card .mindmap-thumbnail,
+.mindmap-card .preview-image {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 4 / 3;
+    margin-bottom: 0;
+    border-radius: 8px 8px 0 0;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    overflow: hidden;
+}
+
+.mindmap-card .mindmap-thumbnail {
+    display: block;
+    object-fit: contain;
+    background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(238, 247, 255, 0.92));
+}
+
+.mindmap-card .mindmap-thumbnail + .preview-image {
+    display: none;
+}
+
+.mindmap-preview {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(238, 247, 255, 0.92)),
+        radial-gradient(circle at 20% 20%, rgba(92, 225, 230, 0.22), transparent 36%),
+        radial-gradient(circle at 85% 75%, rgba(255, 102, 196, 0.18), transparent 34%);
+}
+
+.mindmap-preview svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.mindmap-preview-surface {
+    fill: rgba(255, 255, 255, 0.2);
+}
+
+.mindmap-preview-link {
+    fill: none;
+    stroke: rgba(78, 93, 120, 0.42);
+    stroke-width: 2.5;
+    stroke-linecap: round;
+}
+
+.mindmap-preview-node rect {
+    stroke-width: 2;
+    filter: drop-shadow(0 3px 5px rgba(34, 41, 57, 0.12));
+}
+
+.mindmap-preview-node text {
+    fill: #20242c;
+    font-family: 'Poppins', Arial, sans-serif;
+    font-size: 9px;
+    font-weight: 700;
+    pointer-events: none;
+}
+
+.mindmap-preview-node.level-1 text {
+    font-size: 10px;
+}
+
+.mindmap-preview-empty-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: #6c757d;
+    font-size: 0.82rem;
+    font-weight: 600;
+}
+
+.mindmap-preview-empty-content i {
+    color: #8c52ff;
+    font-size: 1.6rem;
+    opacity: 0.75;
+}
+

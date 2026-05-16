@@ -1,6 +1,7 @@
 const { ObjectId } = require('mongodb');
 const userModel = require('../models/userModel.js');
 const moment = require('moment');
+const { decorateMindmaps } = require('../utils/mindmapPreview.js');
 
 function isSameDay(date1, date2) {
   const d1 = new Date(date1);
@@ -63,12 +64,12 @@ exports.getDashboardPage = async (req, res) => {
     const mindmapCollectionName = req.session.user._id.toString();
     const collection = mindmapsDb.collection(mindmapCollectionName);
 
-    const mindmaps = await collection
+    const mindmaps = decorateMindmaps(await collection
       .find(filter)
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
-      .toArray();
+      .toArray());
 
     const totalMindmaps = await collection.countDocuments(filter);
     const totalPages = Math.ceil(totalMindmaps / limit);
@@ -164,9 +165,13 @@ exports.getFolderPage = async (req, res) => {
         const mindmapCollectionName = req.session.user._id.toString();
         const collection = mindmapsDb.collection(mindmapCollectionName);
 
-        const mindmaps = await collection.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).toArray();
+        const mindmaps = decorateMindmaps(await collection.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).toArray());
         const totalMindmaps = await collection.countDocuments(filter);
         const totalPages = Math.ceil(totalMindmaps / limit);
+
+        res.locals.showSearch = true;
+        res.locals.searchActionUrl = `/dashboard/folders/${folderId}`;
+        res.locals.searchQuery = searchQuery;
 
         res.render('dashboard', {
             pageTitle: `Thư mục: ${currentFolder.name}`,
@@ -198,17 +203,28 @@ exports.moveMindmap = async (req, res) => {
 
         const db = req.app.locals.mindmapsDb;
         const collectionName = req.session.user._id.toString();
+        const userId = new ObjectId(req.session.user._id);
         
         let updateOperation;
 
         if (folderId === "root") {
             updateOperation = { $unset: { folderId: "" } };
         } else {
-            updateOperation = { $set: { folderId: new ObjectId(folderId) } };
+            if (!ObjectId.isValid(folderId)) {
+                return res.status(400).json({ success: false, message: 'Folder ID không hợp lệ.' });
+            }
+
+            const folderObjectId = new ObjectId(folderId);
+            const folder = await db.collection('folders').findOne({ _id: folderObjectId, userId });
+            if (!folder) {
+                return res.status(404).json({ success: false, message: 'Không tìm thấy thư mục.' });
+            }
+
+            updateOperation = { $set: { folderId: folderObjectId } };
         }
 
         const result = await db.collection(collectionName).updateOne(
-            { _id: new ObjectId(mindmapId) },
+            { _id: new ObjectId(mindmapId), deleted: { $ne: true } },
             updateOperation 
         );
 
@@ -248,10 +264,10 @@ exports.getTrashPage = async (req, res) => {
             filter.title = { $regex: searchQuery, $options: 'i' };
         }
 
-        const deletedMindmaps = await mindmapsDb.collection(collectionName)
+        const deletedMindmaps = decorateMindmaps(await mindmapsDb.collection(collectionName)
                                  .find(filter) 
                                  .sort({ deletedAt: -1 })
-                                 .toArray();
+                                 .toArray());
         
         const mindmapsWithRemainingDays = deletedMindmaps.map(mindmap => {
             if (!mindmap.deletedAt) {

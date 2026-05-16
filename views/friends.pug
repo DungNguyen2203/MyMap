@@ -69,12 +69,12 @@ block main
                   .d-flex.align-items-center.w-100
                     //- Avatar
                     img.rounded-circle.me-3.friend-avatar(
-                      src=friend.avatar || '/images/default-avatar.png',
+                      src=friend.avatar || '/images/default-avatar.svg',
                       alt=`Avatar của ${friend.username}`,
                       width="40",
                       height="40",
                       style="object-fit: cover;",
-                      onerror="this.onerror=null; this.src='/images/default-avatar.png';"
+                      onerror="this.onerror=null; this.src='/images/default-avatar.svg';"
                     )
                     .friend-details.flex-grow-1
                       .fw-bold #{friend.username}

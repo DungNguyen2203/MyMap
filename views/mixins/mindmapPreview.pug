@@ -1,0 +1,54 @@
+mixin mindmapPreview(mindmap)
+  if mindmap.preview && mindmap.preview.nodes && mindmap.preview.nodes.length
+    .preview-image.mindmap-preview
+      svg(
+        viewBox=`0 0 ${mindmap.preview.width || 300} ${mindmap.preview.height || 180}`,
+        role="img",
+        aria-label=`Preview ${mindmap.title || 'mindmap'}`,
+        preserveAspectRatio="xMidYMid meet"
+      )
+        rect.mindmap-preview-surface(
+          x="0",
+          y="0",
+          width=mindmap.preview.width || 300,
+          height=mindmap.preview.height || 180,
+          rx="0"
+        )
+        each link in mindmap.preview.links
+          path.mindmap-preview-link(
+            d=link.d,
+            stroke=link.stroke,
+            style=`stroke-width: ${link.strokeWidth || 2}px;`
+          )
+        each node in mindmap.preview.nodes
+          g.mindmap-preview-node(class=`level-${node.level}`)
+            rect(
+              x=node.x,
+              y=node.y,
+              width=node.width,
+              height=node.height,
+              rx=node.radius || 6,
+              fill=node.fill,
+              stroke=node.stroke,
+              style=`stroke-width: ${node.strokeWidth || 1}px;`
+            )
+            if node.label
+              text(
+                x=node.textX,
+                y=node.textY,
+                text-anchor="middle",
+                dominant-baseline="middle",
+                style=`font-size: ${node.fontSize || 9}px;`
+              )= node.label
+  else if mindmap.thumbnailUrl
+    img.mindmap-thumbnail(
+      src=mindmap.thumbnailUrl,
+      alt=mindmap.title || 'Mindmap preview',
+      loading="lazy",
+      onerror="this.remove();"
+    )
+  else
+    .preview-image.mindmap-preview
+      .mindmap-preview-empty-content
+        i.fas.fa-diagram-project
+        span Chua co preview

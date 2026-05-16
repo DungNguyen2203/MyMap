@@ -1,0 +1,15 @@
+[dotenv@17.2.3] injecting env (15) from .env -- tip: ⚙️  write to custom object with { processEnv: myObject }
+[dotenv@17.2.3] injecting env (0) from .env -- tip: ⚙️  load multiple .env files with { path: ['.env.local', '.env'] }
+✅ Successfully connected to MongoDB Atlas!
+✅ DB Connected!
+✅ App & Locals Initialized!
+✅ Basic Middleware Set!
+✅ Session & Flash Middleware Set!
+✅ Socket Handler Initialized!
+friendRoutes initialized. Collections ready: true true
+✅ API & Pug Routes Registered!
+✅ React Specific Route Set!
+✅ React Static Files Serving Set!
+✅ Final Routes & Error Handlers Set!
+🚀 Server is listening on port 3001
+📁 Environment: development

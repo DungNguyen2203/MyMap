@@ -13,7 +13,7 @@ const mindmapSchema = new mongoose.Schema({
     // === THÊM TRƯỜNG MỚI NÀY ===
     thumbnailUrl: {
         type: String,
-        default: '/images/default-mindmap-thumbnail.png' // Giá trị mặc định
+        default: '/images/default-mindmap-thumbnail.svg' // Giá trị mặc định
     },
     // === KẾT THÚC THÊM MỚI ===
     owner: {

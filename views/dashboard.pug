@@ -1,4 +1,5 @@
 extends ../views/layouts/default.pug
+include mixins/mindmapPreview.pug
 
 block styles
   link(rel="stylesheet" href="/css/style-welcome.css")
@@ -74,11 +75,7 @@ block main
             .mindmap-card(data-id=`${mindmap._id}`) 
               //- === HIỂN THỊ ẢNH PREVIEW ===
               a.card-link(href=`/import/${mindmap._id}` target="_blank") 
-                //- Hiển thị ảnh thumbnail nếu có, nếu không thì dùng ảnh placeholder
-                if mindmap.thumbnailUrl
-                  img.mindmap-thumbnail(src=mindmap.thumbnailUrl, alt=mindmap.title || 'Mindmap Preview', onerror="this.onerror=null; this.src='/images/default-mindmap-thumbnail.png';") 
-                else
-                  div.preview-image
+                +mindmapPreview(mindmap)
               .card-title.card-title-display
                 a(href=`/import/${mindmap._id}` target="_blank") #{mindmap.title} 
               .card-title.card-title-edit(style="display: none;")
