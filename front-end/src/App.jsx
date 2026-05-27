@@ -19,6 +19,7 @@ import './App.scss';
 import DrawAreaNode from './components/DrawAreaNode';
 import { markdownToMindmap } from './utils/markdownToMindmap';
 import CytoscapeMindmap from './components/CytoscapeMindmap';
+import { useCollaboration } from './hooks/useCollaboration';
 
 const nodeTypes = { custom: CustomNode, drawArea: DrawAreaNode };
 const FAKE_NODE_ID = 'multi-select-fake-node';
@@ -321,6 +322,131 @@ function FlowContent({ currentMindmapId, onManualSave }) {
   );
 }
 
+/* --------------------------- COLLABORATOR CURSORS --------------------------- */
+const CURSOR_COLORS = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F'];
+
+function CollaboratorCursors({ collaborators, currentUserId }) {
+  // Lọc ra chỉ collaborators khác (không phải mình) và có cursor position
+  const remoteCursors = collaborators.filter(
+    (c) => c.id !== currentUserId && c.cursor
+  );
+
+  if (remoteCursors.length === 0) return null;
+
+  return (
+    <>
+      {remoteCursors.map((collab, idx) => (
+        <div
+          key={collab.id}
+          style={{
+            position: 'absolute',
+            left: collab.cursor.x,
+            top: collab.cursor.y,
+            pointerEvents: 'none',
+            zIndex: 1000,
+            transform: 'translate(-2px, -2px)',
+            transition: 'left 0.1s ease, top 0.1s ease',
+          }}
+        >
+          {/* Cursor icon */}
+          <svg width="16" height="20" viewBox="0 0 16 20" fill="none">
+            <path
+              d="M0 0L16 12H6L3 20L0 0Z"
+              fill={CURSOR_COLORS[idx % CURSOR_COLORS.length]}
+              stroke="white"
+              strokeWidth="1"
+            />
+          </svg>
+          {/* User name label */}
+          <div
+            style={{
+              position: 'absolute',
+              top: '18px',
+              left: '10px',
+              background: CURSOR_COLORS[idx % CURSOR_COLORS.length],
+              color: '#fff',
+              padding: '2px 6px',
+              borderRadius: '4px',
+              fontSize: '10px',
+              fontWeight: 600,
+              whiteSpace: 'nowrap',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+            }}
+          >
+            {collab.name}
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
+
+/* --------------------------- COLLAB INDICATOR BAR --------------------------- */
+function CollabIndicator({ collaborators, isConnected }) {
+  if (!collaborators || collaborators.length <= 1) return null;
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        top: '10px',
+        right: '10px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        background: 'rgba(0,0,0,0.75)',
+        backdropFilter: 'blur(8px)',
+        color: '#fff',
+        padding: '6px 14px',
+        borderRadius: '20px',
+        fontSize: '12px',
+        fontWeight: 500,
+        zIndex: 100,
+        boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
+      }}
+    >
+      <span
+        style={{
+          width: '8px',
+          height: '8px',
+          borderRadius: '50%',
+          background: isConnected ? '#4ade80' : '#f87171',
+          display: 'inline-block',
+        }}
+      />
+      <span>
+        {collaborators.length} người đang chỉnh sửa
+      </span>
+      {/* Avatar stack */}
+      <div style={{ display: 'flex', marginLeft: '4px' }}>
+        {collaborators.slice(0, 5).map((c, idx) => (
+          <div
+            key={c.id}
+            title={c.name}
+            style={{
+              width: '22px',
+              height: '22px',
+              borderRadius: '50%',
+              background: CURSOR_COLORS[idx % CURSOR_COLORS.length],
+              border: '2px solid rgba(255,255,255,0.8)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '10px',
+              fontWeight: 700,
+              color: '#fff',
+              marginLeft: idx > 0 ? '-6px' : '0',
+              zIndex: 5 - idx,
+            }}
+          >
+            {(c.name || '?').charAt(0).toUpperCase()}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* --------------------------- MINDMAP EDITOR --------------------------- */
 function MindmapEditor() {
   const darkMode = useStore((s) => s.darkMode);
@@ -331,6 +457,9 @@ function MindmapEditor() {
   
   // THÊM: Tải mindmap khi component mount (nếu chưa có trong store)
   const { isLoaded, setLoaded, loadState, nodes, setCurrentMindmapId, currentMindmapId } = useStore();
+
+  // === THÊM: Kích hoạt Real-time Collaboration ===
+  const { collaborators, isConnected, emitCursorMove } = useCollaboration(id);
   
   useEffect(() => {
     // Chỉ tải nếu chưa tải, hoặc ID không khớp
@@ -363,15 +492,29 @@ function MindmapEditor() {
     }
   }, [id, isLoaded, loadState, setLoaded, setCurrentMindmapId, currentMindmapId]);
 
+  // === THÊM: Xử lý mouse move để broadcast cursor ===
+  const handleMouseMove = useCallback((e) => {
+    // Chỉ emit nếu có người khác đang cùng chỉnh sửa
+    if (collaborators && collaborators.length > 1) {
+      emitCursorMove({ x: e.clientX, y: e.clientY });
+    }
+  }, [collaborators, emitCursorMove]);
 
   return (
-    <div className={`app-container ${darkMode ? 'dark-mode' : 'light-mode'}`}>
+    <div
+      className={`app-container ${darkMode ? 'dark-mode' : 'light-mode'}`}
+      onMouseMove={handleMouseMove}
+    >
       <ReactFlowProvider>
         {/* SỬA: Truyền hàm lưu thủ công vào VerticalToolbar */}
         <VerticalToolbar 
           onManualSave={() => manualSaveRef.current && manualSaveRef.current()}
         />
         <DarkModeToggle />
+        {/* === THÊM: Hiển thị thanh chỉ báo collaboration === */}
+        <CollabIndicator collaborators={collaborators} isConnected={isConnected} />
+        {/* === THÊM: Hiển thị cursor của collaborators === */}
+        <CollaboratorCursors collaborators={collaborators} currentUserId={useStore((s) => s.socketUserId)} />
         {/* SỬA: Truyền ID và ref xuống FlowContent */}
         <FlowContent 
           currentMindmapId={id} 

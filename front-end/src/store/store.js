@@ -166,7 +166,11 @@ const storeCreator = (set, get) => ({
   // === THÊM MỚI: State cho việc tải mindmap ===
   isLoaded: false,
   currentMindmapId: null,
-  saveStatus: 'idle', // 'idle', 'saving', 'saved', 'error' 
+  saveStatus: 'idle', // 'idle', 'saving', 'saved', 'error'
+  // === THÊM MỚI: State cho Real-time Collaboration ===
+  collaborators: [],        // Danh sách users đang cùng chỉnh sửa mindmap
+  collabConnected: false,   // Trạng thái kết nối socket cho collaboration
+  socketUserId: null,       // ID của user hiện tại (từ socket authentication)
 
   // --- QUAN TRỌNG: Sửa hàm loadState ---
   loadState: (newState) => {
@@ -246,6 +250,34 @@ const storeCreator = (set, get) => ({
   setLoaded: (value) => set({ isLoaded: value }),
   setCurrentMindmapId: (id) => set({ currentMindmapId: id }),
   setSaveStatus: (status) => set({ saveStatus: status }),
+
+  // === THÊM MỚI: Actions cho Real-time Collaboration ===
+  setCollaborators: (users) => set({ collaborators: users }),
+  setCollabConnected: (connected) => set({ collabConnected: connected }),
+  setSocketUserId: (userId) => set({ socketUserId: userId }),
+
+  // Áp dụng thay đổi nodes từ collaborator khác (remote)
+  applyRemoteNodesChange: (remoteNodes) => {
+    if (!Array.isArray(remoteNodes)) return;
+    const validatedNodes = validateAndFixNodes(remoteNodes);
+    set({ nodes: validatedNodes });
+  },
+
+  // Áp dụng thay đổi edges từ collaborator khác (remote)
+  applyRemoteEdgesChange: (remoteEdges) => {
+    if (!Array.isArray(remoteEdges)) return;
+    const validatedEdges = validateAndFixEdges(remoteEdges);
+    set({ edges: validatedEdges });
+  },
+
+  // Cập nhật vị trí cursor của một collaborator
+  updateCollaboratorCursor: (userId, cursor) => {
+    set({
+      collaborators: get().collaborators.map(c =>
+        c.id === userId ? { ...c, cursor } : c
+      ),
+    });
+  },
   
   setSelectedEdgeId: (edgeId, position = null) => {
     set({

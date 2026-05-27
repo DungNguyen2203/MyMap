@@ -63,5 +63,84 @@ router.patch(
   mindmapController.updateMindmapData // Hàm controller mới sẽ xử lý
 );
 
+// === THÊM MỚI: Routes cho Real-time Collaboration (Shared Access) ===
+// Cho phép user khác (collaborator) truy cập mindmap của owner qua link chia sẻ
+router.get('/shared/:ownerId/:id/json', authMiddleware.checkLoggedIn, async (req, res) => {
+    try {
+        const db = req.app.locals.mindmapsDb;
+        const mindmapId = req.params.id;
+        const ownerId = req.params.ownerId; // ID của chủ sở hữu mindmap
+
+        if (!ObjectId.isValid(mindmapId)) {
+            return res.status(400).json({ success: false, error: 'ID không hợp lệ' });
+        }
+
+        const objectId = new ObjectId(mindmapId);
+        // Truy cập collection của OWNER (không phải của user hiện tại)
+        const collectionName = ownerId;
+
+        const mindmap = await db.collection(collectionName).findOne({
+            _id: objectId,
+            deleted: { $ne: true }
+        });
+
+        if (!mindmap) {
+            return res.status(404).json({ success: false, error: 'Mindmap không tồn tại hoặc đã bị xóa' });
+        }
+
+        res.json({
+            success: true,
+            data: {
+                id: mindmap._id,
+                title: mindmap.title,
+                content: mindmap.content,
+                createdAt: mindmap.createdAt,
+                nodes: mindmap.nodes || [],
+                edges: mindmap.edges || [],
+                ownerId: ownerId
+            }
+        });
+
+    } catch (error) {
+        console.error('Error fetching shared mindmap JSON:', error);
+        res.status(500).json({ success: false, error: 'Lỗi server' });
+    }
+});
+
+// Cho phép collaborator lưu thay đổi vào mindmap của owner
+router.patch('/shared/:ownerId/:id/save', authMiddleware.checkLoggedIn, async (req, res) => {
+    try {
+        const db = req.app.locals.mindmapsDb;
+        const mindmapId = req.params.id;
+        const ownerId = req.params.ownerId;
+
+        if (!ObjectId.isValid(mindmapId)) {
+            return res.status(400).json({ success: false, message: 'ID mindmap không hợp lệ.' });
+        }
+
+        const mindmapObjectId = new ObjectId(mindmapId);
+        const collectionName = ownerId;
+        const { nodes, edges } = req.body;
+
+        if (!Array.isArray(nodes) || !Array.isArray(edges)) {
+            return res.status(400).json({ success: false, message: 'Dữ liệu không đúng định dạng.' });
+        }
+
+        const result = await db.collection(collectionName).updateOne(
+            { _id: mindmapObjectId, deleted: { $ne: true } },
+            { $set: { nodes, edges, updatedAt: new Date() } }
+        );
+
+        if (result.matchedCount === 0) {
+            return res.status(404).json({ success: false, message: 'Mindmap không tồn tại.' });
+        }
+
+        res.json({ success: true, message: 'Đã lưu thay đổi collaboration!' });
+    } catch (error) {
+        console.error('Error saving shared mindmap:', error);
+        res.status(500).json({ success: false, message: 'Lỗi server.' });
+    }
+});
+
 router.get('/:id', authMiddleware.checkLoggedIn, mindmapController.getMindmapPage);
-module.exports = router;
+module.exports = router;
