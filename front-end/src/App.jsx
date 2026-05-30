@@ -46,8 +46,8 @@ function debounce(func, wait) {
 
 
 /* --------------------------- FLOW CONTENT --------------------------- */
-// SỬA: Thêm props 'currentMindmapId' và 'onManualSave'
-function FlowContent({ currentMindmapId, onManualSave }) {
+// SỬA: Thêm props 'currentMindmapId', 'onManualSave', 'ownerId'
+function FlowContent({ currentMindmapId, onManualSave, ownerId }) {
   const {
     nodes,
     edges,
@@ -97,7 +97,11 @@ function FlowContent({ currentMindmapId, onManualSave }) {
     if (setSaveStatus) setSaveStatus('saving');
 
     try {
-      const response = await fetch(`${REACT_APP_API_URL || ''}/mindmaps/${currentMindmapId}/save`, {
+      // Xác định URL API dựa trên ownerId (nếu đang cộng tác thì dùng API shared)
+      const saveUrl = ownerId
+        ? `${REACT_APP_API_URL || ''}/mindmaps/shared/${ownerId}/${currentMindmapId}/save`
+        : `${REACT_APP_API_URL || ''}/mindmaps/${currentMindmapId}/save`;
+      const response = await fetch(saveUrl, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }, 
         body: JSON.stringify({
@@ -125,14 +129,15 @@ function FlowContent({ currentMindmapId, onManualSave }) {
     } finally {
       isAutoSaving.current = false;
     }
-  }, 1500), [currentMindmapId, isLoaded, REACT_APP_API_URL, setSaveStatus]); // Delay 1.5s
+  }, 1500), [currentMindmapId, isLoaded, REACT_APP_API_URL, setSaveStatus, ownerId]); // Delay 1.5s
 
-  // Kích hoạt Auto-save
+  // Kích hoạt Auto-save (CHỈ khi thay đổi từ local, KHÔNG khi nhận từ socket)
   useEffect(() => {
-    if (isLoaded && nodes.length > 0) {
+    const currentIsRemoteUpdate = useStore.getState().isRemoteUpdate;
+    if (isLoaded && nodes.length > 0 && !currentIsRemoteUpdate) {
       handleSaveToDB(nodes, edges);
     }
-  }, [nodes, edges, isLoaded, handleSaveToDB]);
+  }, [nodes, edges, isLoaded, handleSaveToDB]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Kết nối với nút Lưu thủ công
   useEffect(() => {
@@ -451,12 +456,12 @@ function CollabIndicator({ collaborators, isConnected }) {
 function MindmapEditor() {
   const darkMode = useStore((s) => s.darkMode);
 
-  // SỨA: Lấy ID từ URL và tạo ref cho nút lưu thủ công
-  const { id } = useParams();
+  // SỬA: Lấy ID và ownerId từ URL, tạo ref cho nút lưu thủ công
+  const { id, ownerId } = useParams();
   const manualSaveRef = useRef(null);
   
   // THÊM: Tải mindmap khi component mount (nếu chưa có trong store)
-  const { isLoaded, setLoaded, loadState, nodes, setCurrentMindmapId, currentMindmapId } = useStore();
+  const { isLoaded, setLoaded, loadState, setCurrentMindmapId, currentMindmapId } = useStore();
 
   // === THÊM: Kích hoạt Real-time Collaboration ===
   const { collaborators, isConnected, emitCursorMove } = useCollaboration(id);
@@ -467,7 +472,11 @@ function MindmapEditor() {
       const fetchMindmap = async () => {
          try {
             if(setLoaded) setLoaded(false);
-            const res = await fetch(`/mindmaps/${id}/json`, { credentials: 'include' });
+            // Xác định URL API dựa trên ownerId (nếu đang cộng tác thì dùng API shared)
+            const fetchUrl = ownerId
+              ? `/mindmaps/shared/${ownerId}/${id}/json`
+              : `/mindmaps/${id}/json`;
+            const res = await fetch(fetchUrl, { credentials: 'include' });
             if (!res.ok) throw new Error('Không thể tải mindmap');
             const data = await res.json();
             if (!data.success || !data.data) throw new Error('Dữ liệu không hợp lệ');
@@ -490,7 +499,7 @@ function MindmapEditor() {
       };
       fetchMindmap();
     }
-  }, [id, isLoaded, loadState, setLoaded, setCurrentMindmapId, currentMindmapId]);
+  }, [id, ownerId, isLoaded, loadState, setLoaded, setCurrentMindmapId, currentMindmapId]);
 
   // === THÊM: Xử lý mouse move để broadcast cursor ===
   const handleMouseMove = useCallback((e) => {
@@ -506,19 +515,22 @@ function MindmapEditor() {
       onMouseMove={handleMouseMove}
     >
       <ReactFlowProvider>
-        {/* SỬA: Truyền hàm lưu thủ công vào VerticalToolbar */}
+        {/* SỬA: Truyền hàm lưu thủ công, mindmapId, currentUserId vào VerticalToolbar */}
         <VerticalToolbar 
           onManualSave={() => manualSaveRef.current && manualSaveRef.current()}
+          mindmapId={id}
+          currentUserId={useStore((s) => s.socketUserId)}
         />
         <DarkModeToggle />
         {/* === THÊM: Hiển thị thanh chỉ báo collaboration === */}
         <CollabIndicator collaborators={collaborators} isConnected={isConnected} />
         {/* === THÊM: Hiển thị cursor của collaborators === */}
         <CollaboratorCursors collaborators={collaborators} currentUserId={useStore((s) => s.socketUserId)} />
-        {/* SỬA: Truyền ID và ref xuống FlowContent */}
+        {/* SỬA: Truyền ID, ownerId và ref xuống FlowContent */}
         <FlowContent 
           currentMindmapId={id} 
-          onManualSave={manualSaveRef} 
+          onManualSave={manualSaveRef}
+          ownerId={ownerId}
         />
       </ReactFlowProvider>
     </div>
@@ -633,6 +645,7 @@ function App() {
       <Routes>
         {/* SỬA: Route cho editor giờ phải có :id */}
         <Route path="/editor/:id" element={<MindmapEditor />} />
+        <Route path="/editor/:id/:ownerId" element={<MindmapEditor />} />
         
         {/* Các route cũ */}
         <Route path="/import/:id" element={<ImportMindmap />} />

@@ -171,6 +171,7 @@ const storeCreator = (set, get) => ({
   collaborators: [],        // Danh sách users đang cùng chỉnh sửa mindmap
   collabConnected: false,   // Trạng thái kết nối socket cho collaboration
   socketUserId: null,       // ID của user hiện tại (từ socket authentication)
+  isRemoteUpdate: false,    // Flag: true khi đang nhận dữ liệu từ socket (tránh auto-save loop)
 
   // --- QUAN TRỌNG: Sửa hàm loadState ---
   loadState: (newState) => {
@@ -255,19 +256,23 @@ const storeCreator = (set, get) => ({
   setCollaborators: (users) => set({ collaborators: users }),
   setCollabConnected: (connected) => set({ collabConnected: connected }),
   setSocketUserId: (userId) => set({ socketUserId: userId }),
+  setIsRemoteUpdate: (value) => set({ isRemoteUpdate: value }),
 
   // Áp dụng thay đổi nodes từ collaborator khác (remote)
   applyRemoteNodesChange: (remoteNodes) => {
     if (!Array.isArray(remoteNodes)) return;
     const validatedNodes = validateAndFixNodes(remoteNodes);
-    set({ nodes: validatedNodes });
+    set({ nodes: validatedNodes, isRemoteUpdate: true });
+    // Auto-reset flag sau 200ms để cho phép local changes kích hoạt auto-save bình thường
+    setTimeout(() => set({ isRemoteUpdate: false }), 200);
   },
 
   // Áp dụng thay đổi edges từ collaborator khác (remote)
   applyRemoteEdgesChange: (remoteEdges) => {
     if (!Array.isArray(remoteEdges)) return;
     const validatedEdges = validateAndFixEdges(remoteEdges);
-    set({ edges: validatedEdges });
+    set({ edges: validatedEdges, isRemoteUpdate: true });
+    setTimeout(() => set({ isRemoteUpdate: false }), 200);
   },
 
   // Cập nhật vị trí cursor của một collaborator

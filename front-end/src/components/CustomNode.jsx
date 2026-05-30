@@ -74,6 +74,10 @@ function CustomNode({ id, data, selected }) {
     setNodeDraggable(id, !isEditing);
   }, [isEditing, id, setNodeDraggable]);
 
+  useEffect(() => {
+    setLabel(data.label);
+  }, [data.label]);
+
   // --- (Hàm thêm node con) ---
   const handleAddNode = (e, direction) => {
     e.stopPropagation();
@@ -247,7 +251,11 @@ function CustomNode({ id, data, selected }) {
         <textarea
           ref={textareaRef}
           value={label}
-          onChange={(e) => setLabel(e.target.value)}
+          onChange={(e) => {
+            const val = e.target.value;
+            setLabel(val);
+            updateNodeData(id, { label: val });
+          }}
           // ...
           onBlur={handleBlur}
           onKeyDown={handleKeyDown}

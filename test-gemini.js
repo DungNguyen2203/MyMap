@@ -2,23 +2,31 @@
 require("dotenv").config();
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-// Khởi tạo với API key từ .env
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-
-// Dùng model hợp lệ (hiện tại Google khuyên dùng: gemini-1.5-flash hoặc gemini-1.5-pro)
+const GEMINI_KEYS = (process.env.GEMINI_API_KEYS || "").split(",").map(k => k.trim()).filter(Boolean);
 const MODEL_NAME = "gemini-2.5-flash";
 
 async function testGemini() {
-  try {
-    console.log("🔍 Đang thử gọi Gemini API...");
+  if (GEMINI_KEYS.length === 0) {
+    console.log("❌ Không tìm thấy key nào trong GEMINI_API_KEYS!");
+    return;
+  }
 
-    const model = genAI.getGenerativeModel({ model: MODEL_NAME });
+  console.log(`🔍 Tìm thấy ${GEMINI_KEYS.length} key trong GEMINI_API_KEYS. Bắt đầu thử nghiệm...`);
 
-    const result = await model.generateContent("Xin chào, Gemini! Bạn có đang hoạt động không?");
-    console.log("✅ Phản hồi từ Gemini:");
-    console.log(result.response.text());
-  } catch (err) {
-    console.error("❌ Lỗi khi gọi Gemini:", err.message || err);
+  for (let i = 0; i < GEMINI_KEYS.length; i++) {
+    const key = GEMINI_KEYS[i];
+    const maskedKey = key.slice(0, 8) + "..." + key.slice(-4);
+    console.log(`\n🔑 Đang thử key thứ ${i + 1}: ${maskedKey}`);
+    
+    try {
+      const genAI = new GoogleGenerativeAI(key);
+      const model = genAI.getGenerativeModel({ model: MODEL_NAME });
+      const result = await model.generateContent("Xin chào, Gemini! Bạn có đang hoạt động không?");
+      console.log(`✅ Thành công với key ${maskedKey}! Phản hồi:`);
+      console.log(result.response.text());
+    } catch (err) {
+      console.error(`❌ Thất bại với key ${maskedKey}:`, err.message || err);
+    }
   }
 }
 

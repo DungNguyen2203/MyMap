@@ -12,8 +12,8 @@ import {
   EditOutlined,
   BorderOutlined,
   AimOutlined,
-  HighlightOutlined,
   ClearOutlined,
+  ShareAltOutlined,
 } from '@ant-design/icons';
 import { toPng } from 'html-to-image';
 import { AutoComplete, message } from 'antd';
@@ -39,8 +39,8 @@ const ERASE_TOOL = { mode: 'erase', color: '#FFFFFF', thickness: 20, opacity: 1 
 const CURSOR_TOOL = { mode: 'cursor' };
 // --- Hết Preset ---
 
-// SỬA 1: Nhận prop 'onManualSave' (Hàm lưu vào DB)
-const VerticalToolbar = ({ onManualSave }) => {
+// SỬA 1: Nhận prop 'onManualSave', 'mindmapId', 'currentUserId'
+const VerticalToolbar = ({ onManualSave, mindmapId, currentUserId }) => {
   const {
     addNode,
     loadState,
@@ -59,6 +59,7 @@ const VerticalToolbar = ({ onManualSave }) => {
 
   const { fitView } = useReactFlow();
   const [isPickerVisible, setPickerVisible] = useState(false);
+  const [isShareModalVisible, setShareModalVisible] = useState(false);
   const fileInputRef = useRef(null);
 
   // --- (Logic zundo/temporal state giữ nguyên) ---
@@ -150,6 +151,28 @@ const VerticalToolbar = ({ onManualSave }) => {
   };
   const handleToggleCreateAreaMode = () => {
     setAppMode(appMode === 'creatingDrawArea' ? 'normal' : 'creatingDrawArea');
+  };
+
+  // Hàm xử lý chia sẻ link cộng tác
+  const handleShare = () => {
+    setShareModalVisible(true);
+  };
+
+  const getShareLink = () => {
+    if (!mindmapId || !currentUserId) return '';
+    const baseUrl = window.location.origin;
+    return `${baseUrl}/editor/${mindmapId}/${currentUserId}`;
+  };
+
+  const handleCopyLink = () => {
+    const link = getShareLink();
+    if (!link) {
+      message.warning('Không thể tạo link chia sẻ. Vui lòng đợi kết nối...');
+      return;
+    }
+    navigator.clipboard.writeText(link)
+      .then(() => message.success('Đã sao chép link chia sẻ!'))
+      .catch(() => message.error('Không thể sao chép. Vui lòng copy thủ công.'));
   };
   // --- Hết Hàm ---
 
@@ -280,6 +303,15 @@ const VerticalToolbar = ({ onManualSave }) => {
         <button onClick={undo} disabled={!canUndo} title="Hoàn tác"> <UndoOutlined /> </button>
         <button onClick={redo} disabled={!canRedo} title="Làm lại"> <RedoOutlined /> </button>
 
+        {/* NÚT CHIA SẺ CỘNG TÁC */}
+        <button
+          onClick={handleShare}
+          title="Chia sẻ cộng tác"
+          className={isShareModalVisible ? 'active' : ''}
+        >
+          <ShareAltOutlined />
+        </button>
+
         <input
           type="file"
           ref={fileInputRef}
@@ -303,6 +335,39 @@ const VerticalToolbar = ({ onManualSave }) => {
           </div>
         )}
       </div>
+
+      {/* === SHARE MODAL === */}
+      {isShareModalVisible && (
+        <div className="share-modal-overlay" onClick={() => setShareModalVisible(false)}>
+          <div className="share-modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="share-modal-header">
+              <h3><ShareAltOutlined style={{ marginRight: 8 }} />Chia sẻ cộng tác</h3>
+              <button className="share-modal-close" onClick={() => setShareModalVisible(false)}>✕</button>
+            </div>
+            <div className="share-modal-body">
+              <p className="share-modal-desc">Gửi link bên dưới cho bạn bè để cùng chỉnh sửa mindmap theo thời gian thực:</p>
+              <div className="share-link-box">
+                <input
+                  type="text"
+                  value={getShareLink()}
+                  readOnly
+                  className="share-link-input"
+                  onClick={(e) => e.target.select()}
+                />
+                <button className="share-copy-btn" onClick={handleCopyLink}>
+                  📋 Copy
+                </button>
+              </div>
+              {!currentUserId && (
+                <p className="share-modal-warning">⚠️ Đang kết nối... Vui lòng đợi vài giây để lấy link.</p>
+              )}
+              <p className="share-modal-note">
+                💡 Người nhận cần đăng nhập vào hệ thống trước khi mở link.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };

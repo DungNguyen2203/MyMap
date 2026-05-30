@@ -15,7 +15,6 @@ export const useCollaboration = (mindmapId) => {
   const isConnectedRef = useRef(false);
   const lastEmittedNodesRef = useRef(null);
   const lastEmittedEdgesRef = useRef(null);
-  const isRemoteUpdateRef = useRef(false); // Flag để tránh vòng lặp broadcast
   const cursorThrottleRef = useRef(null); // Throttle cho cursor movement
 
   // Lấy các hàm và state từ store
@@ -28,6 +27,7 @@ export const useCollaboration = (mindmapId) => {
   const setCollabConnected = useStore((s) => s.setCollabConnected);
   const updateCollaboratorCursor = useStore((s) => s.updateCollaboratorCursor);
   const setSocketUserId = useStore((s) => s.setSocketUserId);
+  const isRemoteUpdate = useStore((s) => s.isRemoteUpdate);
 
   // === 1. KẾT NỐI VÀ JOIN ROOM ===
   useEffect(() => {
@@ -71,18 +71,15 @@ export const useCollaboration = (mindmapId) => {
     // Nhận thay đổi nodes từ collaborator khác
     const handleRemoteNodesChange = (data) => {
       console.log('📥 [Collab] Remote nodes change received from:', data.userId);
-      isRemoteUpdateRef.current = true;
       applyRemoteNodesChange(data.nodes);
-      // Reset flag sau một tick để cho phép local changes emit lại bình thường
-      setTimeout(() => { isRemoteUpdateRef.current = false; }, 100);
+      // isRemoteUpdate flag được set và auto-reset bên trong store action
     };
 
     // Nhận thay đổi edges từ collaborator khác
     const handleRemoteEdgesChange = (data) => {
       console.log('📥 [Collab] Remote edges change received from:', data.userId);
-      isRemoteUpdateRef.current = true;
       applyRemoteEdgesChange(data.edges);
-      setTimeout(() => { isRemoteUpdateRef.current = false; }, 100);
+      // isRemoteUpdate flag được set và auto-reset bên trong store action
     };
 
     // Nhận vị trí con trỏ của collaborator khác
@@ -126,7 +123,7 @@ export const useCollaboration = (mindmapId) => {
   // === 3. BROADCAST THAY ĐỔI LOCAL NODES ===
   useEffect(() => {
     // Không emit nếu: chưa load xong, chưa connect, hoặc đang nhận remote update
-    if (!isLoaded || !isConnectedRef.current || isRemoteUpdateRef.current) return;
+    if (!isLoaded || !isConnectedRef.current || isRemoteUpdate) return;
     if (!mindmapId) return;
 
     // So sánh nông để tránh emit khi không thực sự thay đổi
@@ -142,7 +139,7 @@ export const useCollaboration = (mindmapId) => {
 
   // === 4. BROADCAST THAY ĐỔI LOCAL EDGES ===
   useEffect(() => {
-    if (!isLoaded || !isConnectedRef.current || isRemoteUpdateRef.current) return;
+    if (!isLoaded || !isConnectedRef.current || isRemoteUpdate) return;
     if (!mindmapId) return;
 
     const edgesJson = JSON.stringify(edges);

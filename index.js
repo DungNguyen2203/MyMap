@@ -145,7 +145,7 @@ async function startServer() {
 
     // === ƯU TIÊN 3: Route đặc biệt để phục vụ React App ===
     // Phục vụ các route React Router bằng cùng file index.html
-    app.get(['/import/:id', '/editor/:id', '/cyto/:id'], (req, res, next) => {
+    app.get(['/import/:id', '/editor/:id', '/editor/:id/:ownerId', '/cyto/:id'], (req, res, next) => {
       console.log(`➡️ Serving React App for ${req.originalUrl}`);
       res.sendFile(reactIndexFile, (err) => {
         if (err) {
