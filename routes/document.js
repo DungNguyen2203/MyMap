@@ -12,7 +12,7 @@ const { z } = require('zod');
 const { GoogleGenAI, createPartFromUri, Type, FileState } = require('@google/genai');
 const authMiddleware = require('../middlewares/middlewares.js');
 const documentController = require('../controllers/documentController.js');
-const pdfParse = require('pdf-parse');
+const { PDFParse } = require('pdf-parse');
 const mammoth = require('mammoth');
 const AdmZip = require('adm-zip');
 
@@ -649,10 +649,11 @@ async function generateWithGeminiFile(file, res) {
 
 async function getPDFPageCount(filePath) {
   const dataBuffer = await fs.promises.readFile(filePath);
-  const data = await pdfParse(dataBuffer);
+  const parser = new PDFParse({ data: dataBuffer });
+  const result = await parser.getText();
   return {
-    numPages: data.numpages || 1,
-    text: data.text || ''
+    numPages: result.total || 1,
+    text: result.text || ''
   };
 }
 
@@ -685,8 +686,9 @@ async function readTextForFallback(file) {
     text = await fs.promises.readFile(file.path, 'utf8');
   } else if (file.mimetype === 'application/pdf') {
     const dataBuffer = await fs.promises.readFile(file.path);
-    const data = await pdfParse(dataBuffer);
-    text = data.text || '';
+    const parser = new PDFParse({ data: dataBuffer });
+    const result = await parser.getText();
+    text = result.text || '';
   } else if (file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
     const result = await mammoth.extractRawText({ path: file.path });
     text = result.value || '';
