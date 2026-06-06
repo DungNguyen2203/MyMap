@@ -21,6 +21,9 @@
 
 *.pdf
 *.md
+*.tex
+*.zip
+*.txt
 
 npm-debug.log*
 yarn-debug.log*

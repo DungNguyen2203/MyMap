@@ -29,9 +29,9 @@
 
 /* --- FOOTER — DARK THEME --- */
 .colors-footer {
-    background: rgba(10, 8, 24, 0.9) !important;
+    background: linear-gradient(180deg, rgba(30, 22, 60, 0.85) 0%, rgba(20, 15, 40, 0.98) 100%) !important;
     backdrop-filter: blur(12px);
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    border-top: 1px solid rgba(140, 82, 255, 0.3);
 }
 
 /* --- BODY & HEADER FIXED --- */
@@ -334,4 +334,58 @@ header .container .dropdown { margin-left: 15px; }
 /* Toast close button */
 #appToast .btn-close {
   filter: invert(1);
+}
+
+/* ============================================================
+   UPLOAD PAGE & CARDS — DARK THEME
+   ============================================================ */
+.upload-card {
+    background: rgba(20, 15, 40, 0.6) !important;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(140, 82, 255, 0.25) !important;
+    border-radius: 16px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+    color: #f0f0f5;
+}
+
+.upload-card .card-body {
+    padding: 2.5rem;
+}
+
+.upload-card .text-muted {
+    color: rgba(255, 255, 255, 0.6) !important;
+}
+
+.upload-card .bg-success.text-white {
+    background: rgba(81, 207, 102, 0.15) !important;
+    color: #51cf66 !important;
+    border-bottom: 1px solid rgba(81, 207, 102, 0.3);
+}
+
+.file-upload-area {
+    background: rgba(255, 255, 255, 0.03);
+    border: 2px dashed rgba(140, 82, 255, 0.4) !important;
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.file-upload-area:hover, .file-upload-area.border-primary {
+    background: rgba(140, 82, 255, 0.08) !important;
+    border-color: #8c52ff !important;
+}
+
+.file-upload-area.border-success {
+    background: rgba(81, 207, 102, 0.08) !important;
+    border-color: #51cf66 !important;
+}
+
+.upload-card .alert-success {
+    background: rgba(81, 207, 102, 0.15);
+    border: 1px solid rgba(81, 207, 102, 0.3);
+    color: #51cf66;
+}
+
+.upload-card .btn-close {
+    filter: invert(1);
 }
