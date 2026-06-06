@@ -20,10 +20,11 @@
 
 /* --- HEADER — GLASSMORPHISM DARK --- */
 .colors-header {
-    background: rgba(10, 8, 24, 0.85) !important;
+    background: rgba(20, 16, 44, 0.96) !important;
     backdrop-filter: blur(20px) saturate(180%);
     -webkit-backdrop-filter: blur(20px) saturate(180%);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+    border-bottom: 1px solid rgba(140, 82, 255, 0.25) !important;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
 
 /* --- FOOTER — DARK THEME --- */
@@ -40,7 +41,7 @@ body > header {
     width: 100%;
     z-index: 1000;
     padding: 0.75rem 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    border-bottom: 1px solid rgba(140, 82, 255, 0.25);
 }
 
 body {
@@ -271,10 +272,13 @@ body {
   color: rgba(255,255,255,0.8);
   text-decoration: none;
   border-bottom: 1px solid rgba(255,255,255,0.04);
-  transition: background 0.15s;
+  transition: all 0.2s ease;
 }
 #search-results a:last-child { border-bottom: none; }
-#search-results a:hover { background: rgba(140, 82, 255, 0.12); color: #fff; }
+#search-results a:hover { 
+  background-color: #ffffff; 
+  color: #0c0a1b; 
+}
 
 @keyframes fadeDown {
   from { opacity: 0; transform: translateY(-5px); }
