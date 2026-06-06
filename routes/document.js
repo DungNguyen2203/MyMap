@@ -3,540 +3,353 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
-const pdf = require('pdf-parse');
-const mammoth = require('mammoth');
+const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const axios = require('axios');
-const FormData = require('form-data');
-const AdmZip = require('adm-zip');
-const { GoogleGenerativeAI } = require("@google/generative-ai");
-const { HfInference } = require('@huggingface/inference');
+const { createClient } = require('redis');
+const { z } = require('zod');
+const { GoogleGenAI, createPartFromUri, Type, FileState } = require('@google/genai');
 const authMiddleware = require('../middlewares/middlewares.js');
 const documentController = require('../controllers/documentController.js');
+const pdfParse = require('pdf-parse');
+const mammoth = require('mammoth');
+const AdmZip = require('adm-zip');
 
-const OCRSPACE_API_KEY = process.env.OCRSPACE_API_KEY;
-const GEMINI_KEYS = (process.env.GEMINI_API_KEYS || process.env.GEMINI_API_KEY || '')
+const GEMINI_KEYS = (process.env.GEMINI_API_KEYS || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '')
   .split(',')
-  .map(k => k.trim())
-  .filter(k => k && k.startsWith('AIzaSy'));
-const HUGGINGFACE_TOKEN = process.env.HUGGINGFACE_TOKEN;
-const CHUNK_SIZE = parseInt(process.env.CHUNK_SIZE || '8000', 10);
-const CHUNK_WORD_LIMIT = parseInt(process.env.CHUNK_WORD_LIMIT || '0', 10);
-const CHUNK_PROCESSING_MODE = (process.env.CHUNK_PROCESSING_MODE || 'parallel').toLowerCase();
-const CHUNK_CONCURRENCY = parseInt(process.env.CHUNK_CONCURRENCY || '3', 10);
+  .map((key) => key.trim())
+  .filter(Boolean);
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.1-8b-instant';
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'openrouter/auto';
 
-// Cấu hình Hàng đợi gọi AI toàn server
-const GLOBAL_AI_CONCURRENCY = parseInt(process.env.GLOBAL_AI_CONCURRENCY || '3', 10);
-const GLOBAL_AI_MIN_INTERVAL = parseInt(process.env.GLOBAL_AI_MIN_INTERVAL || '1000', 10);
+const AI_CONCURRENCY = parseInt(process.env.AI_CONCURRENCY || process.env.GLOBAL_AI_CONCURRENCY || '3', 10);
+const CACHE_TTL_SECONDS = parseInt(process.env.DOCUMENT_CACHE_TTL_SECONDS || String(7 * 24 * 60 * 60), 10);
+const MAX_UPLOAD_MB = parseFloat(process.env.MAX_DOCUMENT_UPLOAD_MB || '5');
+const MAX_UPLOAD_BYTES = Math.floor(MAX_UPLOAD_MB * 1024 * 1024);
+const MAX_FALLBACK_TEXT_CHARS = parseInt(process.env.MAX_FALLBACK_TEXT_CHARS || '120000', 10);
+const TEMP_UPLOAD_DIR = path.join(__dirname, '..', 'temp', 'uploads');
+const CACHE_PREFIX = 'mindmap:document:';
 
-if (!OCRSPACE_API_KEY) console.warn("⚠️ OCRSPACE_API_KEY not set in .env — OCR.Space calls will fail.");
-if (GEMINI_KEYS.length === 0) console.warn("⚠️ GEMINI_API_KEYS not set.");
-if (!HUGGINGFACE_TOKEN) console.warn("⚠️ HUGGINGFACE_TOKEN not set in .env — Hugging Face calls will fail.");
-if (!OPENROUTER_API_KEY) console.warn("⚠️ OPENROUTER_API_KEY not set in .env — OpenRouter calls will fail.");
-// Khởi tạo Hugging Face client
-const hf = HUGGINGFACE_TOKEN ? new HfInference(HUGGINGFACE_TOKEN) : null;
+fs.mkdirSync(TEMP_UPLOAD_DIR, { recursive: true });
+
+if (GEMINI_KEYS.length === 0) console.warn('Gemini API key is not configured. Gemini File API calls will fail.');
+if (!GROQ_API_KEY) console.warn('GROQ_API_KEY is not configured. Groq fallback is disabled.');
+if (!OPENROUTER_API_KEY) console.warn('OPENROUTER_API_KEY is not configured. OpenRouter fallback is disabled.');
+
+let pLimitInstance = null;
+async function runWithAiLimit(task) {
+  if (!pLimitInstance) {
+    const { default: pLimit } = await import('p-limit');
+    pLimitInstance = pLimit(Math.max(1, AI_CONCURRENCY));
+  }
+  return pLimitInstance(task);
+}
 
 const keyManager = {
   keys: GEMINI_KEYS,
   index: 0,
   next() {
-    if (!this.keys || this.keys.length === 0) return null;
-    const k = this.keys[this.index];
+    if (!this.keys.length) return null;
+    const key = this.keys[this.index];
     this.index = (this.index + 1) % this.keys.length;
-    return k;
-  }
+    return key;
+  },
 };
 
-// ========== LỚP QUẢN LÝ HÀNG ĐỢI VÀ GIỚI HẠN TẦN SUẤT API TOÀN CỤC ==========
-class AIApiQueue {
-  constructor(concurrencyLimit = 3, minIntervalMs = 1000) {
-    this.concurrencyLimit = concurrencyLimit;
-    this.minIntervalMs = minIntervalMs;
-    this.queue = [];
-    this.activeCount = 0;
-    this.lastRequestTime = 0;
-    this.timeoutActive = false;
+const allowedMimeTypes = new Set([
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'text/plain',
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+]);
+
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, TEMP_UPLOAD_DIR),
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname || '').toLowerCase();
+      cb(null, `${uuidv4()}${ext}`);
+    },
+  }),
+  limits: { fileSize: MAX_UPLOAD_BYTES },
+  fileFilter: (req, file, cb) => {
+    if (!allowedMimeTypes.has(file.mimetype)) {
+      return cb(new Error('Chỉ chấp nhận PDF, DOCX, TXT, JPG, PNG hoặc GIF.'));
+    }
+    cb(null, true);
+  },
+});
+
+function handleDocumentUpload(req, res, next) {
+  upload.single('documentFile')(req, res, (err) => {
+    if (!err) return next();
+
+    if (req.file?.path) {
+      cleanupLocalUpload(req.file.path).catch((cleanupError) => {
+        console.warn('[handleDocumentUpload] Failed to cleanup rejected upload:', cleanupError.message);
+      });
+    }
+
+    const message = err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE'
+      ? `File quá lớn. Giới hạn hiện tại là ${MAX_UPLOAD_MB}MB.`
+      : err.message || 'Lỗi tải file.';
+    return res.status(400).json({ error: message });
+  });
+}
+
+const MindmapLeafSchema = z.object({
+  title: z.string().trim().min(1),
+  points: z.array(z.string().trim().min(1)).optional().default([]),
+});
+
+const MindmapChildSchema = z.object({
+  title: z.string().trim().min(1),
+  points: z.array(z.string().trim().min(1)).optional().default([]),
+  children: z.array(MindmapLeafSchema).optional().default([]),
+});
+
+const MindmapDocumentSchema = z.object({
+  mainTopic: z.string().trim().min(1),
+  summary: z.string().trim().optional().default(''),
+  subTopics: z.array(z.object({
+    chapterTitle: z.string().trim().min(1),
+    points: z.array(z.string().trim().min(1)).optional().default([]),
+    children: z.array(MindmapChildSchema).optional().default([]),
+  })).min(1),
+});
+
+function childResponseSchema(depth = 0) {
+  const schema = {
+    type: Type.OBJECT,
+    properties: {
+      title: { type: Type.STRING },
+      points: {
+        type: Type.ARRAY,
+        items: { type: Type.STRING },
+      },
+    },
+    required: ['title', 'points'],
+    propertyOrdering: ['title', 'points'],
+  };
+
+  if (depth < 2) {
+    schema.properties.children = {
+      type: Type.ARRAY,
+      items: childResponseSchema(depth + 1),
+    };
+    schema.required.push('children');
+    schema.propertyOrdering.push('children');
   }
 
-  // Cho phép đẩy 1 tác vụ bất đồng bộ vào hàng đợi
-  enqueue(asyncFn) {
-    return new Promise((resolve, reject) => {
-      this.queue.push({ asyncFn, resolve, reject });
-      this.processNext();
+  return schema;
+}
+
+const GEMINI_MINDMAP_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    mainTopic: { type: Type.STRING },
+    summary: { type: Type.STRING },
+    subTopics: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          chapterTitle: { type: Type.STRING },
+          points: {
+            type: Type.ARRAY,
+            items: { type: Type.STRING },
+          },
+          children: {
+            type: Type.ARRAY,
+            items: childResponseSchema(),
+          },
+        },
+        required: ['chapterTitle', 'points', 'children'],
+        propertyOrdering: ['chapterTitle', 'points', 'children'],
+      },
+    },
+  },
+  required: ['mainTopic', 'summary', 'subTopics'],
+  propertyOrdering: ['mainTopic', 'summary', 'subTopics'],
+};
+
+class DocumentCache {
+  constructor() {
+    this.memory = new Map();
+    this.redisClientPromise = null;
+    this.redisUrl = process.env.REDIS_URL;
+    this.upstashUrl = process.env.UPSTASH_REDIS_REST_URL;
+    this.upstashToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+  }
+
+  async get(key) {
+    try {
+      const value = await this.getRemote(key);
+      if (value) return typeof value === 'string' ? JSON.parse(value) : value;
+    } catch (error) {
+      console.warn(`[DocumentCache] Remote get failed for ${key}:`, error.message);
+    }
+
+    const local = this.memory.get(key);
+    if (!local) return null;
+    if (local.expiresAt <= Date.now()) {
+      this.memory.delete(key);
+      return null;
+    }
+    return local.value;
+  }
+
+  async set(key, value, ttlSeconds = CACHE_TTL_SECONDS) {
+    const serialized = JSON.stringify(value);
+    try {
+      await this.setRemote(key, serialized, ttlSeconds);
+    } catch (error) {
+      console.warn(`[DocumentCache] Remote set failed for ${key}:`, error.message);
+    }
+
+    this.memory.set(key, {
+      value,
+      expiresAt: Date.now() + ttlSeconds * 1000,
     });
   }
 
-  // Điều phối và thực thi các tác vụ trong hàng đợi
-  processNext() {
-    if (this.activeCount >= this.concurrencyLimit || this.queue.length === 0) {
+  async getRemote(key) {
+    if (this.upstashUrl && this.upstashToken) {
+      return this.upstashCommand(['GET', key]);
+    }
+
+    const client = await this.getRedisClient();
+    return client ? client.get(key) : null;
+  }
+
+  async setRemote(key, serialized, ttlSeconds) {
+    if (this.upstashUrl && this.upstashToken) {
+      await this.upstashCommand(['SET', key, serialized, 'EX', String(ttlSeconds)]);
       return;
     }
 
-    const now = Date.now();
-    const timeSinceLast = now - this.lastRequestTime;
+    const client = await this.getRedisClient();
+    if (client) await client.set(key, serialized, { EX: ttlSeconds });
+  }
 
-    // Đảm bảo giãn cách tối thiểu giữa các cuộc gọi API để tránh lỗi Rate Limit 429
-    if (timeSinceLast < this.minIntervalMs) {
-      const waitTime = this.minIntervalMs - timeSinceLast;
-      if (!this.timeoutActive) {
-        this.timeoutActive = true;
-        setTimeout(() => {
-          this.timeoutActive = false;
-          this.processNext();
-        }, waitTime);
-      }
-      return;
+  async upstashCommand(command) {
+    const response = await axios.post(
+      this.upstashUrl.replace(/\/$/, ''),
+      command,
+      {
+        headers: {
+          Authorization: `Bearer ${this.upstashToken}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: 10000,
+      },
+    );
+    if (response.data?.error) throw new Error(response.data.error);
+    return response.data?.result;
+  }
+
+  async getRedisClient() {
+    if (!this.redisUrl) return null;
+    if (!this.redisClientPromise) {
+      const client = createClient({ url: this.redisUrl });
+      client.on('error', (error) => console.warn('[DocumentCache] Redis error:', error.message));
+      this.redisClientPromise = client.connect()
+        .then(() => client)
+        .catch((error) => {
+          this.redisClientPromise = null;
+          throw error;
+        });
     }
-
-    const task = this.queue.shift();
-    this.activeCount++;
-    this.lastRequestTime = Date.now();
-
-    // Tiếp tục kiểm tra và khởi chạy các task khác song song trong hạn mức concurrency
-    this.processNext();
-
-    console.log(`[AIApiQueue] Chạy cuộc gọi API mới. Active count: ${this.activeCount}/${this.concurrencyLimit}, Đang chờ: ${this.queue.length}`);
-
-    task.asyncFn()
-      .then(result => task.resolve(result))
-      .catch(err => task.reject(err))
-      .finally(() => {
-        this.activeCount--;
-        console.log(`[AIApiQueue] Hoàn thành cuộc gọi API. Active count: ${this.activeCount}/${this.concurrencyLimit}`);
-        // Chờ thêm khoảng minIntervalMs trước khi kích hoạt task tiếp theo
-        setTimeout(() => this.processNext(), this.minIntervalMs);
-      });
+    return this.redisClientPromise;
   }
 }
 
-// Khởi tạo thực thể hàng đợi toàn cục
-const globalAIQueue = new AIApiQueue(GLOBAL_AI_CONCURRENCY, GLOBAL_AI_MIN_INTERVAL);
+const documentCache = new DocumentCache();
+const inFlightDocuments = new Map();
 
-// Hàm wrapper để đồng bộ tất cả yêu cầu gọi AI qua hàng đợi
-function generateWithRetryQueued(prompt, maxRetries = 3) {
-  return globalAIQueue.enqueue(() => generateWithRetry(prompt, maxRetries));
-}
-// ========== OPENROUTER FREE MODELS - OPTIMIZED ==========
-async function generateWithOpenRouter(prompt) {
-    if (!OPENROUTER_API_KEY) {
-        throw new Error("OPENROUTER_API_KEY not configured");
-    }
-
-    // DANH SÁCH MODEL FREE TỐT NHẤT & KHẢ DỤNG TRÊN OPENROUTER
-    const models = [
-        "openrouter/free", // Thử auto-router trước để luôn tìm được model free khả dụng!
-        "google/gemini-2.0-flash-lite-preview:free",
-        "google/gemini-2.0-pro-exp-02-05:free",
-        "qwen/qwen-2.5-72b-instruct:free",
-        "deepseek/deepseek-chat:free"
-    ];
-
-    for (const model of models) {
-        try {
-            console.log(`🌐 Trying OpenRouter: ${model}`);
-            
-            const response = await axios.post('https://openrouter.ai/api/v1/chat/completions', {
-                model: model,
-                messages: [
-                    {
-                        role: "system", 
-                        content: `TRẢ VỀ DUY NHẤT JSON. KHÔNG text, KHÔNG markdown, KHÔNG giải thích.
-YÊU CẦU: Luôn trả về JSON hợp lệ, bắt đầu bằng { và kết thúc bằng }`
-                    },
-                    {
-                        role: "user",
-                        content: prompt
-                    }
-                ],
-                max_tokens: 4000,
-                temperature: 0.1,
-                response_format: { type: "json_object" } // QUAN TRỌNG: ép trả về JSON
-            }, {
-                headers: {
-                    'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-                    'Content-Type': 'application/json',
-                    'HTTP-Referer': 'http://localhost:3000', // Required for OpenRouter
-                    'X-Title': 'Mindmap Generator' // Required for OpenRouter
-                },
-                timeout: 45000
-            });
-
-            const content = response.data?.choices?.[0]?.message?.content;
-            if (!content) {
-                throw new Error("Empty response from OpenRouter");
-            }
-            console.log(`✓ OpenRouter success with ${model}`);
-            
-            return { 
-                response: {
-                    candidates: [{
-                        content: {
-                            parts: [{ text: content }]
-                        }
-                    }]
-                }
-            };
-
-        } catch (error) {
-            console.warn(`❌ OpenRouter ${model} failed:`, error.response?.data?.error?.message || error.message);
-            continue;
-        }
-    }
-    
-    throw new Error("All OpenRouter models failed");
-}
-// ========== HUGGING FACE FUNCTION - VJP HƠN VỚI INSTRUCTION MODELS ==========
-// SỬA ĐỔI: Sử dụng các model instruction-tuned thay vì model conversational.
-// ========== IMPROVED HUGGING FACE FUNCTION ==========
-// ========== IMPROVED HUGGING FACE FUNCTION ==========
-async function generateWithHuggingFace(prompt, maxRetries = 2) {
-    if (!HUGGINGFACE_TOKEN) {
-        throw new Error("HUGGINGFACE_TOKEN not configured.");
-    }
-
-    // MODEL TỐT NHẤT CHO JSON GENERATION
-    const models = [
-        "mistralai/Mistral-7B-Instruct-v0.2", // Tốt nhất
-        "HuggingFaceH4/zephyr-7b-beta", // Instruction tuned tốt
-        "google/gemma-2b-it", // Nhẹ, nhanh
-        "microsoft/DialoGPT-large" // Fallback cuối
-    ];
-
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-        const model = models[attempt] || models[0];
-        
-        try {
-            console.log(`🤗 Hugging Face Attempt ${attempt + 1} with: ${model}`);
-            
-            // PROMPT ENGINEERING QUAN TRỌNG
-            const enhancedPrompt = `BẠN PHẢI TRẢ VỀ DUY NHẤT JSON. KHÔNG CÓ BẤT KỲ TEXT NÀO KHÁC.
-
-${prompt}
-
-NHẮC LẠI: CHỈ TRẢ VỀ JSON, KHÔNG GIẢI THÍCH, KHÔNG MARKDOWN.`;
-            
-            const response = await axios.post(
-                `https://api-inference.huggingface.co/models/${model}`,
-                {
-                    inputs: enhancedPrompt,
-                    parameters: {
-                        max_new_tokens: 2048,
-                        temperature: 0.1,
-                        do_sample: false,
-                        return_full_text: false
-                    }
-                },
-                {
-                    headers: {
-                        Authorization: `Bearer ${HUGGINGFACE_TOKEN}`,
-                        "Content-Type": "application/json",
-                    },
-                    timeout: 60000
-                }
-            );
-
-            if (response.data.error) {
-                throw new Error(response.data.error);
-            }
-
-            const generatedText = Array.isArray(response.data)
-                ? response.data[0]?.generated_text
-                : response.data?.generated_text;
-
-            if (!generatedText) {
-                throw new Error("Empty response from Hugging Face");
-            }
-
-            console.log(`✓ Hugging Face success with ${model}`);
-            return { generated_text: generatedText };
-
-        } catch (error) {
-            console.warn(`❌ Hugging Face ${model} failed:`, error.message);
-            
-            if (attempt < maxRetries - 1) {
-                console.log(`🔄 Trying next Hugging Face model...`);
-                await new Promise(resolve => setTimeout(resolve, 2000));
-            } else {
-                throw new Error(`All Hugging Face models failed: ${error.message}`);
-            }
-        }
-    }
-}
-// ========== ULTIMATE MULTI-PROVIDER AI FUNCTION (NO TOGETHER) ==========
-async function generateWithRetry(prompt, maxRetries = 3) {
-    let lastError = null;
-
-    // 1. Ưu tiên Gemini trước (nếu có key hợp lệ)
-    if (keyManager.keys && keyManager.keys.length > 0) {
-        const models = ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"];
-        
-        for (let attempt = 0; attempt < maxRetries; attempt++) {
-            const key = keyManager.next();
-            if (!key) continue;
-
-            const selectedModel = models[attempt % models.length];
-
-            try {
-                const genAI = new GoogleGenerativeAI(key);
-                const model = genAI.getGenerativeModel({
-                    model: selectedModel,
-                    generationConfig: {
-                        temperature: 0.1,
-                        topK: 40,
-                        topP: 0.95,
-                        maxOutputTokens: 8192,
-                        responseMimeType: "application/json",
-                    }
-                });
-
-                console.log(`🤖 Gemini Attempt ${attempt + 1} with ${selectedModel}`);
-                const result = await model.generateContent(prompt);
-                console.log(`✓ Gemini ${selectedModel} success`);
-                return result;
-
-            } catch (error) {
-                lastError = error;
-                console.warn(`❌ Gemini ${selectedModel} failed:`, error.message);
-                
-                // Nếu dính lỗi Quota / Rate limit (429), chờ lâu hơn với exponential backoff
-                const isRateLimit = error.message.includes('429') || error.message.includes('Quota');
-                if (attempt < maxRetries - 1) {
-                    const delay = isRateLimit ? 3000 * Math.pow(2, attempt) : 1000;
-                    console.log(`⏳ Waiting ${delay}ms before next retry...`);
-                    await new Promise(resolve => setTimeout(resolve, delay));
-                }
-            }
-        }
-    }
-
-    // 2. Thử OpenRouter (free) - RẤT QUAN TRỌNG
-    try {
-        console.log("🔄 Falling back to OpenRouter free models...");
-        return await generateWithOpenRouter(prompt);
-    } catch (error) {
-        lastError = error;
-        console.warn("OpenRouter fallback failed:", error.message);
-    }
-
-    // 3. Cuối cùng dùng Hugging Face (nếu có token)
-    if (HUGGINGFACE_TOKEN) {
-        try {
-            console.log("🔄 Falling back to Hugging Face...");
-            const hfResult = await generateWithHuggingFace(prompt);
-            return { 
-                response: {
-                    candidates: [{
-                        content: {
-                            parts: [{ text: hfResult.generated_text }]
-                        }
-                    }]
-                }
-            };
-        } catch (error) {
-            lastError = error;
-            console.warn("Hugging Face fallback failed:", error.message);
-        }
-    }
-
-    throw new Error(`All AI services failed: ${lastError?.message || 'Unknown error'}`);
-}
-// ========== TEXT EXTRACTION ==========
-async function extractTextSmart(buffer, mimeType, sseRes) {
-  console.log("🔍 Extracting text from:", mimeType);
-  sendSSE(sseRes, 'progress', { message: `🔍 Bắt đầu trích xuất từ ${mimeType}...` });
-
-  if (mimeType === 'application/pdf') {
-    try {
-      const data = await pdf(buffer, { max: -1 });
-      const text = data.text?.trim() || '';
-      if (!text) throw new Error("Extracted PDF text is empty or pdf-parse failed.");
-
-      sendSSE(sseRes, 'progress', { message: `✓ Đã trích xuất ${text.length} ký tự từ PDF` });
-      console.log(`✓ Successfully extracted ${text.length} characters from PDF.`);
-      return text;
-
-    } catch (error) {
-      console.warn("PDF extraction failed:", error.message);
-      sendSSE(sseRes, 'progress', { message: '🔄 Trích xuất PDF thất bại, thử sử dụng OCR...' });
-
-      try {
-        const ocrText = await runOcrSpaceFull(buffer, mimeType);
-        if (!ocrText) throw new Error("OCR text for PDF is empty.");
-        console.log(`✓ Successfully extracted ${ocrText.length} characters from PDF via OCR.`);
-        sendSSE(sseRes, 'progress', { message: `✓ Đã trích xuất ${ocrText.length} ký tự từ PDF bằng OCR` });
-        return ocrText;
-      } catch (ocrError) {
-        console.error("OCR for PDF also failed:", ocrError.message);
-        sendSSE(sseRes, 'error', { message: `Lỗi OCR PDF: ${ocrError.message}` });
-        throw new Error(`Không thể trích xuất văn bản từ PDF bằng cả hai phương pháp: ${ocrError.message}`);
-      }
-    }
-  }
-
-  if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-    try {
-      const { value } = await mammoth.extractRawText({ buffer });
-      const text = value?.trim() || '';
-      if (!text) throw new Error("Extracted DOCX text is empty.");
-      sendSSE(sseRes, 'progress', { message: `✓ Đã trích xuất ${text.length} ký tự từ DOCX` });
-      console.log(`✓ Successfully extracted ${text.length} characters from DOCX.`);
-      return text;
-    } catch (error) {
-      console.error("DOCX extraction failed:", error.message);
-      sendSSE(sseRes, 'error', { message: `Lỗi trích xuất DOCX: ${error.message}` });
-      throw new Error(`Không thể trích xuất văn bản từ DOCX: ${error.message}`);
-    }
-  }
-
-  if (mimeType === 'text/plain') {
-    try {
-      const text = buffer.toString('utf8').trim();
-      if (!text) throw new Error("Extracted TXT text is empty.");
-      sendSSE(sseRes, 'progress', { message: `✓ Đã trích xuất ${text.length} ký tự từ TXT` });
-      console.log(`✓ Successfully extracted ${text.length} characters from TXT.`);
-      return text;
-    } catch (error) {
-      console.error("TXT extraction failed:", error.message);
-      sendSSE(sseRes, 'error', { message: `Lỗi đọc file TXT: ${error.message}` });
-      throw new Error(`Không thể đọc file TXT: ${error.message}`);
-    }
-  }
-
-  if (mimeType.startsWith('image/')) {
-    console.log(`Attempting OCR for image type: ${mimeType}`);
-    sendSSE(sseRes, 'progress', { message: '🔄 Đang xử lý hình ảnh với OCR...' });
-    try {
-      const ocrText = await runOcrSpaceFull(buffer, mimeType);
-      if (!ocrText) throw new Error("OCR text for image is empty.");
-      console.log(`✓ Successfully extracted ${ocrText.length} characters from image via OCR.`);
-      sendSSE(sseRes, 'progress', { message: `✓ Đã trích xuất ${ocrText.length} ký tự ảnh bằng OCR` });
-      return ocrText;
-    } catch (error) {
-      console.error("Image OCR failed:", error.message);
-      sendSSE(sseRes, 'error', { message: `Lỗi OCR ảnh: ${error.message}` });
-      throw new Error(`Không thể trích xuất văn bản từ ảnh bằng OCR: ${error.message}`);
-    }
-  }
-
-  console.error(`Unsupported or unknown file type: ${mimeType || 'unknown'}`);
-  sendSSE(sseRes, 'error', { message: `Định dạng file không được hỗ trợ hoặc không xác định: ${mimeType || 'unknown'}` });
-  throw new Error(`Định dạng file không được hỗ trợ hoặc không xác định: ${mimeType || 'unknown'}`);
+function cacheKey(hash) {
+  return `${CACHE_PREFIX}${hash}`;
 }
 
-// ========== CHUNK PROCESSING ==========
-function countWords(text) {
-  if (!text) return 0;
-  return text.trim().split(/\s+/).filter(Boolean).length;
+function sendSSE(res, event, data) {
+  if (!res || res.writableEnded) return;
+  res.write(`event: ${event}\n`);
+  res.write(`data: ${JSON.stringify(data)}\n\n`);
 }
 
-function splitIntoSentences(text) {
-  if (!text) return [];
-  const normalized = text.replace(/\s+/g, ' ').trim();
-  if (!normalized) return [];
-  const matches = normalized.match(/[^.!?…;:]+[.!?…;:]*/g);
-  return matches ? matches.map((item) => item.trim()).filter(Boolean) : [normalized];
-}
-
-function splitLongSegmentByWords(segment, maxChars, maxWords) {
-  const words = segment.split(/\s+/).filter(Boolean);
-  const parts = [];
-  let buffer = '';
-  let bufferWords = 0;
-
-  words.forEach((word) => {
-    const next = buffer ? `${buffer} ${word}` : word;
-    const nextWords = bufferWords + 1;
-    const exceedsChars = next.length > maxChars;
-    const exceedsWords = maxWords > 0 && nextWords > maxWords;
-
-    if (exceedsChars || exceedsWords) {
-      if (buffer) parts.push(buffer);
-      buffer = word;
-      bufferWords = 1;
-      return;
-    }
-
-    buffer = next;
-    bufferWords = nextWords;
+function writeSSEHeaders(res) {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
   });
-
-  if (buffer) parts.push(buffer);
-  return parts;
 }
 
-function splitChunksSimple(text, size = CHUNK_SIZE, wordLimit = CHUNK_WORD_LIMIT) {
-  if (!text || text.length === 0) return [];
+function progress(res, message, percent, extra = {}) {
+  sendSSE(res, 'progress', { message, percent, ...extra });
+}
 
-  const normalized = text.replace(/\r\n/g, '\n').trim();
-  if (!normalized) return [];
+function isPathInside(childPath, parentPath) {
+  const resolvedChild = path.resolve(childPath);
+  const resolvedParent = path.resolve(parentPath);
+  const relative = path.relative(resolvedParent, resolvedChild);
+  return relative && !relative.startsWith('..') && !path.isAbsolute(relative);
+}
 
-  const paragraphs = normalized.split(/\n{2,}/).map((item) => item.trim()).filter(Boolean);
-  const chunks = [];
-  let buffer = '';
-  let bufferWords = 0;
-
-  const flushBuffer = () => {
-    if (buffer.trim()) {
-      chunks.push(buffer.trim());
-    }
-    buffer = '';
-    bufferWords = 0;
-  };
-
-  const appendSegment = (segment) => {
-    if (!segment) return;
-    const segmentWords = countWords(segment);
-    const segmentTooLarge = segment.length > size || (wordLimit > 0 && segmentWords > wordLimit);
-
-    if (segmentTooLarge) {
-      flushBuffer();
-      const parts = splitLongSegmentByWords(segment, size, wordLimit);
-      parts.forEach((part) => {
-        chunks.push(part.trim());
-      });
-      return;
-    }
-
-    const nextLength = buffer ? buffer.length + 1 + segment.length : segment.length;
-    const nextWords = bufferWords + segmentWords;
-    const exceedsChars = nextLength > size;
-    const exceedsWords = wordLimit > 0 && nextWords > wordLimit;
-
-    if (exceedsChars || exceedsWords) {
-      flushBuffer();
-    }
-
-    buffer = buffer ? `${buffer} ${segment}` : segment;
-    bufferWords += segmentWords;
-  };
-
-  paragraphs.forEach((paragraph) => {
-    if (paragraph.length > size) {
-      splitIntoSentences(paragraph).forEach(appendSegment);
-    } else {
-      appendSegment(paragraph);
-    }
+async function cleanupLocalUpload(filePath) {
+  if (!filePath) return;
+  if (!isPathInside(filePath, TEMP_UPLOAD_DIR)) {
+    console.warn(`[cleanupLocalUpload] Refusing to delete outside temp upload dir: ${filePath}`);
+    return;
+  }
+  await fs.promises.unlink(filePath).catch((error) => {
+    if (error.code !== 'ENOENT') console.warn(`[cleanupLocalUpload] Failed to delete ${filePath}:`, error.message);
   });
-
-  flushBuffer();
-
-  console.log(`Split text (${text.length} chars) into ${chunks.length} chunks of size ~${size}.`);
-  return chunks;
 }
 
-// ========== JSON EXTRACTION (ARRAY) ==========
-function stripCodeFences(text) {
-  return text.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
+function hashFile(filePath) {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash('sha256');
+    const stream = fs.createReadStream(filePath);
+    stream.on('data', (chunk) => hash.update(chunk));
+    stream.on('error', reject);
+    stream.on('end', () => resolve(hash.digest('hex')));
+  });
 }
 
-function findJsonArray(text) {
+function safeFileTitle(filename) {
+  return path.basename(filename || 'Sơ đồ tư duy').replace(/\.[^/.]+$/, '').trim() || 'Sơ đồ tư duy';
+}
+
+function getChunkText(chunk) {
+  if (!chunk) return '';
+  if (typeof chunk.text === 'string') return chunk.text;
+  if (typeof chunk.text === 'function') return chunk.text();
+  return chunk.candidates?.[0]?.content?.parts?.map((part) => part.text || '').join('') || '';
+}
+
+function extractJsonObject(text) {
+  const raw = String(text || '').trim();
+  const withoutFence = raw
+    .replace(/^```(?:json)?/i, '')
+    .replace(/```$/i, '')
+    .trim();
+
+  if (withoutFence.startsWith('{') && withoutFence.endsWith('}')) return withoutFence;
+
   let start = -1;
   let depth = 0;
   let inString = false;
   let escaped = false;
-
-  for (let i = 0; i < text.length; i += 1) {
-    const char = text[i];
+  for (let i = 0; i < withoutFence.length; i += 1) {
+    const char = withoutFence[i];
     if (escaped) {
       escaped = false;
       continue;
@@ -550,896 +363,695 @@ function findJsonArray(text) {
       continue;
     }
     if (inString) continue;
-
-    if (char === '[') {
+    if (char === '{') {
       if (depth === 0) start = i;
       depth += 1;
-    } else if (char === ']') {
+    } else if (char === '}') {
       depth -= 1;
-      if (depth === 0 && start !== -1) {
-        return text.slice(start, i + 1);
-      }
+      if (depth === 0 && start !== -1) return withoutFence.slice(start, i + 1);
     }
   }
-  return null;
+  return withoutFence;
 }
 
-function extractJsonArray(text) {
-  if (!text || typeof text !== 'string') return null;
-  const cleaned = stripCodeFences(text);
-  const jsonArrayString = findJsonArray(cleaned);
-  if (!jsonArrayString) {
-    console.warn('[extractJsonArray] No JSON array found in text');
-    return null;
-  }
-
+function parseMindmapJson(rawText) {
+  const jsonText = extractJsonObject(rawText);
+  let parsed;
   try {
-    const parsed = JSON.parse(jsonArrayString);
-    return Array.isArray(parsed) ? parsed : null;
-  } catch (e) {
-    console.warn('[extractJsonArray] JSON parse error:', e.message);
-    return null;
-  }
-}
-
-// ========== JSON VALIDATION & CLEAN ==========
-function sanitizeMindmapNodes(nodes, level = 1, maxDepth = 6) {
-  if (!Array.isArray(nodes) || level > maxDepth) return [];
-
-  return nodes.map((node) => {
-    if (!node || typeof node !== 'object') return null;
-    const name = typeof node.node_name === 'string' ? node.node_name.trim() : '';
-    if (!name) return null;
-
-    const children = sanitizeMindmapNodes(node.children, level + 1, maxDepth);
-    return {
-      node_name: name,
-      level,
-      children,
-    };
-  }).filter(Boolean);
-}
-
-function createSimpleFallback(chunk, chunkIndex) {
-  const lines = chunk.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  const children = lines
-    .filter((line) => line.length > 5)
-    .slice(0, 5)
-    .map((line) => ({
-      node_name: line.slice(0, 120),
-      level: 2,
-      children: [],
-    }));
-
-  return {
-    nodes: [{
-      node_name: `Phần ${chunkIndex + 1}`,
-      level: 1,
-      children: children.length ? children : [{
-        node_name: chunk.substring(0, 120).trim() || `Nội dung phần ${chunkIndex + 1}`,
-        level: 2,
-        children: [],
-      }],
-    }],
-    fallback: true,
-  };
-}
-// ========== IMPROVED CHUNK ANALYSIS WITH MAP-REDUCE PROMPT ==========
-async function analyzeChunkSimple(chunk, chunkIndex, totalChunks) {
-  console.log(`Analyzing chunk ${chunkIndex + 1}/${totalChunks}...`);
-
-  const prompt = `Bạn là một chuyên gia phân tích. Hãy trích xuất các ý chính và ý phụ từ đoạn văn bản sau để làm mindmap. Trả về ĐÚNG định dạng JSON mảng các object: [{"node_name": "Tên ý", "level": 1, "children": [{"node_name": "Ý phụ", "level": 2}]}]. Tuyệt đối không giải thích thêm.
-
-ĐOẠN VĂN BẢN:
-${chunk}
-
-YÊU CẦU:
-- Chỉ trả về JSON array, không bọc markdown, không kèm giải thích.
-- "children" luôn là mảng (có thể rỗng).
-- Không tự thêm field ngoài node_name, level, children.`;
-
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    try {
-      console.log(`Attempt ${attempt + 1} for chunk ${chunkIndex + 1}`);
-
-      const result = await generateWithRetryQueued(prompt);
-      const rawText = result?.response?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-
-      if (!rawText) {
-        throw new Error('Empty response from AI');
-      }
-
-      console.log(`Raw AI response for chunk ${chunkIndex + 1}:`, rawText.substring(0, 200) + '...');
-      const parsedArray = extractJsonArray(rawText);
-      const sanitizedNodes = parsedArray ? sanitizeMindmapNodes(parsedArray) : [];
-
-      if (sanitizedNodes.length > 0) {
-        console.log(`✓ Chunk ${chunkIndex + 1} - Attempt ${attempt + 1} SUCCESS`);
-        return {
-          nodes: sanitizedNodes,
-          error: false,
-        };
-      }
-
-      console.warn(`⚠️ Chunk ${chunkIndex + 1} - Attempt ${attempt + 1} JSON validation failed`);
-      if (attempt < 2) {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-      }
-    } catch (error) {
-      console.error(`❌ Chunk ${chunkIndex + 1} - Attempt ${attempt + 1} error:`, error.message);
-      if (attempt < 2) {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-      }
-    }
-  }
-
-  console.log(`🔄 Using fallback for chunk ${chunkIndex + 1}`);
-  const fallback = createSimpleFallback(chunk, chunkIndex);
-  return { ...fallback, error: true };
-}
-
-// ========== OPTIMIZED CHUNK PROCESSING ==========
-async function processSingleChunk(chunk, chunkIndex, totalChunks, sse) {
-  const progressData = {
-    message: `🔍 Phân tích phần ${chunkIndex + 1}/${totalChunks}...`,
-    chunkCurrent: chunkIndex + 1,
-    totalChunks: totalChunks
-  };
-  sendSSE(sse, 'progress', progressData);
-  console.log(`Job: ${progressData.message}`);
-
-  try {
-    const analysis = await analyzeChunkSimple(chunk, chunkIndex, totalChunks);
-    
-    const chunkDoneData = {
-      message: analysis.error ? `⚠️ Lỗi phân tích phần ${chunkIndex + 1}` : `✅ Đã phân tích phần ${chunkIndex + 1}/${totalChunks}`,
-      chunkCurrent: chunkIndex + 1,
-      totalChunks: totalChunks,
-    };
-    sendSSE(sse, 'progress', chunkDoneData);
-    
-    if (analysis.error) console.warn(`Chunk ${chunkIndex + 1} error: ${chunkDoneData.message}`);
-    
-    return analysis;
+    parsed = JSON.parse(jsonText);
   } catch (error) {
-    console.error(`❌ Error processing chunk ${chunkIndex + 1}:`, error);
-    return {
-      nodes: [],
-      summary: `Lỗi phân tích: ${error.message}`,
-      error: true
-    };
+    throw new Error(`AI trả về JSON không hợp lệ: ${error.message}`);
   }
+
+  const result = MindmapDocumentSchema.safeParse(parsed);
+  if (!result.success) {
+    const firstIssue = result.error.issues[0];
+    throw new Error(`JSON không đúng schema: ${firstIssue?.path?.join('.') || 'root'} ${firstIssue?.message || ''}`.trim());
+  }
+  return normalizeMindmap(result.data);
 }
 
-// ========== MINDMAP STRUCTURE AGGREGATION & GENERATION (MAP-REDUCE) ==========
-function normalizeNodeName(name) {
-  return String(name || '').trim().toLowerCase();
+function normalizeMindmap(mindmap) {
+  const normalizeText = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+  const normalizeChild = (child) => ({
+    title: normalizeText(child.title),
+    points: (child.points || []).map(normalizeText).filter(Boolean),
+    children: (child.children || []).map(normalizeChild).filter((item) => item.title),
+  });
+
+  const normalized = {
+    mainTopic: normalizeText(mindmap.mainTopic),
+    summary: normalizeText(mindmap.summary),
+    subTopics: (mindmap.subTopics || []).map((topic) => ({
+      chapterTitle: normalizeText(topic.chapterTitle),
+      points: (topic.points || []).map(normalizeText).filter(Boolean),
+      children: (topic.children || []).map(normalizeChild).filter((item) => item.title),
+    })).filter((topic) => topic.chapterTitle),
+  };
+
+  if (!normalized.subTopics.length) {
+    normalized.subTopics.push({
+      chapterTitle: normalized.summary || normalized.mainTopic || 'Nội dung chính',
+      points: [],
+      children: [],
+    });
+  }
+  return normalized;
 }
 
-function mergeNodeArrays(targetNodes, incomingNodes, level = 1) {
-  if (!Array.isArray(incomingNodes)) return;
-  const targetMap = new Map(targetNodes.map((node) => [normalizeNodeName(node.node_name), node]));
+function generateMarkdownFromMindmap(mindmap) {
+  const cleanLine = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+  const lines = [`# ${cleanLine(mindmap.mainTopic) || 'Sơ đồ tư duy'}`];
 
-  incomingNodes.forEach((incoming) => {
-    if (!incoming || typeof incoming !== 'object') return;
-    const name = typeof incoming.node_name === 'string' ? incoming.node_name.trim() : '';
-    if (!name) return;
+  if (mindmap.summary) {
+    lines.push('');
+    lines.push(`- ${cleanLine(mindmap.summary)}`);
+  }
 
-    const key = normalizeNodeName(name);
-    const existing = targetMap.get(key);
-    if (existing) {
-      existing.level = level;
-      if (!Array.isArray(existing.children)) existing.children = [];
-      mergeNodeArrays(existing.children, incoming.children || [], level + 1);
-      return;
+  const appendChild = (child, depth) => {
+    const headingDepth = Math.min(Math.max(depth, 2), 6);
+    lines.push('');
+    lines.push(`${'#'.repeat(headingDepth)} ${cleanLine(child.title)}`);
+    (child.points || []).forEach((point) => lines.push(`- ${cleanLine(point)}`));
+    (child.children || []).forEach((nested) => appendChild(nested, headingDepth + 1));
+  };
+
+  (mindmap.subTopics || []).forEach((topic) => {
+    lines.push('');
+    lines.push(`## ${cleanLine(topic.chapterTitle)}`);
+    (topic.points || []).forEach((point) => lines.push(`- ${cleanLine(point)}`));
+    (topic.children || []).forEach((child) => appendChild(child, 3));
+  });
+
+  return lines.join('\n').trim();
+}
+
+function buildGeminiPrompt(filename) {
+  return `Bạn là hệ thống phân tích tài liệu học tập và tạo sơ đồ tư duy.
+
+Hãy đọc toàn bộ file đính kèm "${filename}" bằng ngữ cảnh gốc của Gemini File API. Không chia nhỏ tài liệu theo chunk.
+
+Yêu cầu:
+- Trả về duy nhất một JSON object đúng schema đã được cung cấp.
+- mainTopic là chủ đề chính của tài liệu.
+- summary là một câu tóm tắt ngắn.
+- subTopics là các chương/mục lớn theo đúng logic tài liệu.
+- Mỗi subTopic có chapterTitle, points và children.
+- points là các ý quan trọng, ngắn gọn, có thể dùng trực tiếp để vẽ mindmap.
+- children là các nhánh con; nếu không có thì trả về mảng rỗng.
+- Không thêm markdown, không giải thích ngoài JSON.
+- Ưu tiên tiếng Việt nếu tài liệu là tiếng Việt.`;
+}
+
+function buildTextPrompt(filename, text) {
+  return `${buildGeminiPrompt(filename)}
+
+Nội dung tài liệu:
+${text}`;
+}
+
+async function waitForGeminiFile(ai, file, res) {
+  let current = file;
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    if (!current.state || current.state === FileState.ACTIVE || current.state === 'ACTIVE') return current;
+    if (current.state === FileState.FAILED || current.state === 'FAILED') {
+      throw new Error(`Gemini File API xử lý file thất bại: ${current.error?.message || 'không rõ nguyên nhân'}`);
     }
 
-    const newNode = {
-      node_name: name,
-      level,
-      children: [],
-    };
-    mergeNodeArrays(newNode.children, incoming.children || [], level + 1);
-    targetNodes.push(newNode);
-    targetMap.set(key, newNode);
-  });
+    progress(res, `Gemini đang xử lý file (${attempt + 1}/30)...`, 25);
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    current = await ai.files.get({ name: current.name });
+  }
+  throw new Error('Gemini File API xử lý file quá lâu.');
 }
 
-function aggregateJsonResults(results, chunks, options = {}) {
-  console.log(`Aggregating results from ${results.length} JSON analyses (expected ${chunks.length}).`);
-  const rootName = options.rootName || 'Sơ đồ tư duy';
-  const validResults = results.filter((result) => result && Array.isArray(result.nodes) && result.nodes.length > 0);
-  const failedResults = results.filter((result) => result && result.error);
+async function generateWithVercelStreamObject(file, res) {
+  const apiKey = keyManager.next();
+  if (!apiKey) throw new Error('Gemini API key chưa được cấu hình.');
 
-  if (validResults.length === 0) {
-    console.warn("⚠️ No valid JSON analysis results to aggregate.");
-    return {
-      mainTopic: rootName,
-      root: { node_name: rootName, level: 0, children: [] },
-      summary: "Quá trình phân tích tài liệu đã gặp lỗi nghiêm trọng.",
-      totalChunks: chunks.length,
-      analyzedChunks: 0,
-      failedChunks: failedResults.length,
-      error: true,
-    };
-  }
+  const [{ streamObject }, { createGoogleGenerativeAI }] = await Promise.all([
+    import('ai'),
+    import('@ai-sdk/google'),
+  ]);
 
-  const mergedNodes = [];
-  validResults.forEach((result) => {
-    mergeNodeArrays(mergedNodes, result.nodes, 1);
+  const google = createGoogleGenerativeAI({ apiKey });
+  const fileBuffer = await fs.promises.readFile(file.path);
+
+  progress(res, `Đang sinh object stream bằng Vercel AI SDK (${GEMINI_MODEL})...`, 35);
+
+  const result = streamObject({
+    model: google(GEMINI_MODEL),
+    schema: MindmapDocumentSchema,
+    schemaName: 'MindmapDocument',
+    schemaDescription: 'Cấu trúc JSON dùng để vẽ sơ đồ tư duy từ một tài liệu học tập.',
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'text', text: buildGeminiPrompt(file.originalname) },
+        {
+          type: 'file',
+          data: fileBuffer,
+          mediaType: file.mimetype,
+          filename: file.originalname,
+        },
+      ],
+    }],
+    temperature: 0.1,
+    maxOutputTokens: 8192,
   });
 
-  const root = {
-    node_name: rootName,
-    level: 0,
-    children: mergedNodes,
-  };
+  let rawJson = '';
+  let lastPartialSize = 0;
 
-  console.log(`Aggregated into ${mergedNodes.length} root children.`);
+  for await (const part of result.fullStream) {
+    if (part.type === 'text-delta') {
+      rawJson += part.textDelta || '';
+      sendSSE(res, 'object_delta', {
+        provider: 'vercel-ai-sdk/google',
+        model: GEMINI_MODEL,
+        delta: part.textDelta || '',
+        receivedChars: rawJson.length,
+      });
+      continue;
+    }
+
+    if (part.type === 'object') {
+      const partialJson = JSON.stringify(part.object);
+      if (partialJson.length > lastPartialSize + 120) {
+        lastPartialSize = partialJson.length;
+        sendSSE(res, 'object_partial', {
+          provider: 'vercel-ai-sdk/google',
+          model: GEMINI_MODEL,
+          partial: part.object,
+          receivedChars: partialJson.length,
+        });
+      }
+      continue;
+    }
+
+    if (part.type === 'error') {
+      throw part.error instanceof Error ? part.error : new Error(String(part.error));
+    }
+  }
+
+  const object = await result.object;
+  const mindmap = normalizeMindmap(MindmapDocumentSchema.parse(object));
+  const usage = await result.usage.catch(() => null);
 
   return {
-    mainTopic: rootName,
-    root,
-    totalChunks: chunks.length,
-    analyzedChunks: validResults.length,
-    failedChunks: failedResults.length,
+    mindmap,
+    provider: 'vercel-ai-sdk/google',
+    model: GEMINI_MODEL,
+    rawLength: rawJson.length,
+    usage,
   };
 }
 
-function generateMarkdownFromJson(aggregatedJson) {
-  console.log("Generating final Markdown from aggregated JSON structure...");
+async function generateWithGeminiFile(file, res) {
+  let lastError = null;
+  const attempts = Math.max(1, Math.min(GEMINI_KEYS.length || 1, 3));
 
-  if (aggregatedJson.error) {
-    console.warn("⚠️ Aggregated JSON indicates error. Generating error Markdown.");
-    return `# ${aggregatedJson.mainTopic}\n\n## Lỗi phân tích\n\n${aggregatedJson.summary || 'Không thể phân tích tài liệu'}`;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const apiKey = keyManager.next();
+    if (!apiKey) break;
+
+    const ai = new GoogleGenAI({ apiKey });
+    let uploadedFile = null;
+
+    try {
+      progress(res, `Đang upload file lên Gemini File API (${attempt + 1}/${attempts})...`, 20);
+      uploadedFile = await ai.files.upload({
+        file: file.path,
+        config: {
+          mimeType: file.mimetype,
+          displayName: file.originalname,
+        },
+      });
+
+      uploadedFile = await waitForGeminiFile(ai, uploadedFile, res);
+      if (!uploadedFile.uri) throw new Error('Gemini File API không trả về file URI.');
+
+      progress(res, `Đang sinh JSON có schema bằng ${GEMINI_MODEL}...`, 40);
+      const stream = await ai.models.generateContentStream({
+        model: GEMINI_MODEL,
+        contents: [{
+          role: 'user',
+          parts: [
+            createPartFromUri(uploadedFile.uri, uploadedFile.mimeType || file.mimetype),
+            { text: buildGeminiPrompt(file.originalname) },
+          ],
+        }],
+        config: {
+          temperature: 0.1,
+          topP: 0.9,
+          maxOutputTokens: 8192,
+          responseMimeType: 'application/json',
+          responseSchema: GEMINI_MINDMAP_SCHEMA,
+        },
+      });
+
+      let rawJson = '';
+      for await (const chunk of stream) {
+        const text = getChunkText(chunk);
+        if (!text) continue;
+        rawJson += text;
+        sendSSE(res, 'object_delta', {
+          provider: 'gemini',
+          model: GEMINI_MODEL,
+          delta: text,
+          receivedChars: rawJson.length,
+        });
+      }
+
+      const mindmap = parseMindmapJson(rawJson);
+      return {
+        mindmap,
+        provider: 'gemini',
+        model: GEMINI_MODEL,
+        rawLength: rawJson.length,
+      };
+    } catch (error) {
+      lastError = error;
+      console.warn(`[Gemini] Attempt ${attempt + 1} failed:`, error.message);
+      const rateLimited = /429|quota|rate/i.test(error.message || '');
+      if (!rateLimited && attempt >= attempts - 1) break;
+    } finally {
+      if (uploadedFile?.name) {
+        ai.files.delete({ name: uploadedFile.name }).catch((error) => {
+          console.warn(`[Gemini] Failed to delete remote file ${uploadedFile.name}:`, error.message);
+        });
+      }
+    }
   }
 
-  const rootNode = aggregatedJson.root || { node_name: aggregatedJson.mainTopic || 'Sơ đồ tư duy', children: [] };
-  const lines = [];
+  throw new Error(`Gemini File API thất bại: ${lastError?.message || 'chưa có API key hợp lệ'}`);
+}
 
-  const appendNode = (node, depth) => {
-    if (!node || !node.node_name) return;
-    const headingLevel = Math.min(depth, 6);
-    lines.push(`${'#'.repeat(headingLevel)} ${node.node_name}`);
-    (node.children || []).forEach((child) => appendNode(child, depth + 1));
+async function getPDFPageCount(filePath) {
+  const dataBuffer = await fs.promises.readFile(filePath);
+  const data = await pdfParse(dataBuffer);
+  return {
+    numPages: data.numpages || 1,
+    text: data.text || ''
   };
+}
 
-  appendNode(rootNode, 1);
-
-  if (aggregatedJson.totalChunks > 1) {
-    const failNote = aggregatedJson.failedChunks
-      ? ` (bỏ qua ${aggregatedJson.failedChunks} phần lỗi)`
-      : '';
-    lines.push('---');
-    lines.push(`*Tổng hợp từ ${aggregatedJson.analyzedChunks}/${aggregatedJson.totalChunks} phần nội dung${failNote}.*`);
+function getDocxPageCount(filePath) {
+  try {
+    const zip = new AdmZip(filePath);
+    const entry = zip.getEntry('docProps/app.xml');
+    if (!entry) return 1;
+    const xml = entry.getData().toString('utf8');
+    const match = xml.match(/<Pages>(\d+)<\/Pages>/);
+    return match ? parseInt(match[1], 10) : 1;
+  } catch (err) {
+    console.warn('[DocxPageCount] Lỗi đọc số trang docx, mặc định 1:', err.message);
+    return 1;
   }
-
-  const markdown = lines.join('\n\n').trim();
-  console.log("✓ Successfully generated clean Markdown from JSON.");
-  console.log("Markdown preview:", markdown.substring(0, 200) + "...");
-  return markdown;
 }
 
-// ========== OCR FUNCTIONS ==========
-async function ocrSpaceParseBuffer(buffer, mimeType) { 
-  if (!OCRSPACE_API_KEY) throw new Error("OCRSPACE_API_KEY not configured."); 
-  const form = new FormData(); 
-  form.append('apikey', OCRSPACE_API_KEY); 
-  form.append('language', 'vie'); 
-  form.append('isOverlayRequired', 'false'); 
-  form.append('OCREngine', '2'); 
-  form.append('scale', 'true'); 
-  form.append('detectOrientation', 'true'); 
-  form.append('file', buffer, { filename: `upload.${mimeType ? mimeType.split('/')[1] || 'bin' : 'bin'}` }); 
-  console.log('Sending request to OCR.Space...'); 
-  try { 
-    const resp = await axios.post('https://api.ocr.space/parse/image', form, { headers: form.getHeaders(), timeout: 90000 }); 
-    console.log('Received response from OCR.Space.'); 
-    if (resp.data?.IsErroredOnProcessing) { 
-      console.error('OCR.Space Processing Error:', resp.data.ErrorMessage.join ? resp.data.ErrorMessage.join('; ') : resp.data.ErrorMessage); 
-    } 
-    if (resp.data?.OCRExitCode !== 1) { 
-      console.warn(`OCR.Space Exit Code: ${resp.data?.OCRExitCode}. Details might be in ErrorMessage.`); 
-    } 
-    return resp.data; 
-  } catch (error) { 
-    console.error("OCR.Space API request error:", error.message); 
-    if (error.response) { 
-      console.error("OCR.Space Response Status:", error.response.status); 
-      console.error("OCR.Space Response Data:", error.response.data); 
-    } 
-    throw new Error(`Lỗi gọi API OCR.Space: ${error.message}`); 
-  } 
+function canUseTextFallback(file) {
+  const supported = [
+    'text/plain',
+    'application/pdf',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+  ];
+  return supported.includes(file.mimetype);
 }
 
-async function runOcrSpaceFull(buffer, mimeType) { 
-  console.log("Running full OCR process..."); 
-  const data = await ocrSpaceParseBuffer(buffer, mimeType); 
-  if (data?.IsErroredOnProcessing || data?.OCRExitCode !== 1) { 
-    const errorMessages = data?.ErrorMessage?.join ? data.ErrorMessage.join('; ') : (data?.ErrorMessage || "Lỗi xử lý OCR không xác định"); 
-    console.error(`OCR processing failed with exit code ${data?.OCRExitCode}. Errors: ${errorMessages}`); 
-    throw new Error(errorMessages); 
-  } 
-  if (!data.ParsedResults || data.ParsedResults.length === 0) { 
-    console.warn("OCR processed successfully but returned no parsed results."); 
-    return ''; 
-  } 
-  const combinedText = data.ParsedResults.map(p => p.ParsedText || '').join('\n').trim(); 
-  console.log(`OCR successful, extracted ${combinedText.length} characters.`); 
-  return combinedText; 
+async function readTextForFallback(file) {
+  let text = '';
+  if (file.mimetype === 'text/plain') {
+    text = await fs.promises.readFile(file.path, 'utf8');
+  } else if (file.mimetype === 'application/pdf') {
+    const dataBuffer = await fs.promises.readFile(file.path);
+    const data = await pdfParse(dataBuffer);
+    text = data.text || '';
+  } else if (file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+    const result = await mammoth.extractRawText({ path: file.path });
+    text = result.value || '';
+  }
+  return text.slice(0, MAX_FALLBACK_TEXT_CHARS);
 }
 
-// ========== MULTER & STORAGE ==========
-const upload = multer({ 
-  storage: multer.memoryStorage(), 
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
-  fileFilter: (req, file, cb) => { 
-    const allowedTypes = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain', 'image/jpeg', 'image/png', 'image/gif']; 
-    if (allowedTypes.includes(file.mimetype)) { 
-      cb(null, true); 
-    } else { 
-      console.warn(`File rejected: Unsupported type ${file.mimetype}`); 
-      cb(new Error(`Chỉ chấp nhận file PDF, DOCX, TXT, JPG, PNG, GIF.`)); 
-    } 
-  } 
-});
-
-// ========== JOB STORAGE (IN-MEMORY) ==========
-// CẢNH BÁO PRODUCTION: 
-// Lưu job trong `Map` (bộ nhớ server) hoạt động tốt khi phát triển (development).
-// Tuy nhiên, khi "chạy thật" (production), nếu server bị restart, deploy, hoặc crash,
-// tất cả các job đang chạy và đã hoàn thành sẽ bị MẤT.
-//
-// GIẢI PHÁP: Sử dụng một hệ thống lưu trữ bên ngoài như REDIS.
-// - Redis cực kỳ nhanh và lưu trữ dữ liệu bền bỉ.
-// - Bạn có thể dùng `redis.set(jobId, jsonData, 'EX', 10 * 60)` để job tự động 
-//   hết hạn sau 10 phút, thay thế cho `setTimeout` để xóa job.
-// - Điều này cho phép bạn mở rộng (scale) lên nhiều server mà không mất job.
-const jobs = new Map();
-const sseClients = new Map();
-
-// ========== SSE FUNCTIONS ==========
-function sendSSE(res, event, data) { 
-  if (!res || res.writableEnded) { 
-    if (res && res.writableEnded) { 
-      console.warn(`Attempted to write to an already closed SSE stream for event: ${event}`); 
-    } 
-    return; 
-  } 
-  try { 
-    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); 
-  } catch (e) { 
-    console.error(`❌ Failed to send SSE event '${event}':`, e.message); 
-    try { res.end(); } catch (closeErr) {} 
-    sseClients.delete(findJobIdByResponse(res)); 
-  } 
+function parseProviderJsonResponse(content) {
+  if (!content) throw new Error('Provider không trả về nội dung.');
+  return parseMindmapJson(content);
 }
 
-function findJobIdByResponse(res) { 
-  for (let [jobId, clientRes] of sseClients.entries()) { 
-    if (clientRes === res) { 
-      return jobId; 
-    } 
-  } 
-  return null; 
+async function generateWithGroqText(file, text, res) {
+  if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY chưa được cấu hình.');
+  progress(res, `Gemini lỗi, đang chuyển sang Groq (${GROQ_MODEL})...`, 45);
+
+  const response = await axios.post(
+    'https://api.groq.com/openai/v1/chat/completions',
+    {
+      model: GROQ_MODEL,
+      messages: [
+        { role: 'system', content: 'Trả về duy nhất JSON hợp lệ đúng schema. Không markdown, không giải thích.' },
+        { role: 'user', content: buildTextPrompt(file.originalname, text) },
+      ],
+      temperature: 0.1,
+      max_tokens: 8192,
+      response_format: { type: 'json_object' },
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${GROQ_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      timeout: 60000,
+    },
+  );
+
+  return {
+    mindmap: parseProviderJsonResponse(response.data?.choices?.[0]?.message?.content),
+    provider: 'groq',
+    model: GROQ_MODEL,
+    rawLength: response.data?.choices?.[0]?.message?.content?.length || 0,
+  };
 }
 
-// ========== ROUTES ==========
-router.get('/page', authMiddleware.checkLoggedIn, documentController.getUploadPage);
+async function generateWithOpenRouterText(file, text, res) {
+  if (!OPENROUTER_API_KEY) throw new Error('OPENROUTER_API_KEY chưa được cấu hình.');
+  progress(res, `Đang chuyển sang OpenRouter (${OPENROUTER_MODEL})...`, 50);
 
-router.post('/start-summarize', authMiddleware.checkLoggedIn, upload.single('documentFile'), async (req, res, next) => { 
-  if (!req.file) { 
-    console.log("Upload failed: No file received."); 
-    return res.status(400).json({ error: 'Không có file nào được tải lên.' }); 
-  } 
-  console.log(`Received file: ${req.file.originalname}, Type: ${req.file.mimetype}, Size: ${req.file.size}`); 
-  const jobId = uuidv4(); 
-  
-  // Lưu thông tin file vào database phục vụ Kiểm duyệt tài liệu cho Admin
+  const response = await axios.post(
+    'https://openrouter.ai/api/v1/chat/completions',
+    {
+      model: OPENROUTER_MODEL,
+      messages: [
+        { role: 'system', content: 'Trả về duy nhất JSON hợp lệ đúng schema. Không markdown, không giải thích.' },
+        { role: 'user', content: buildTextPrompt(file.originalname, text) },
+      ],
+      temperature: 0.1,
+      max_tokens: 8192,
+      response_format: { type: 'json_object' },
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': process.env.APP_PUBLIC_URL || 'http://localhost:3000',
+        'X-Title': 'Mindmap Generator',
+      },
+      timeout: 60000,
+    },
+  );
+
+  return {
+    mindmap: parseProviderJsonResponse(response.data?.choices?.[0]?.message?.content),
+    provider: 'openrouter',
+    model: OPENROUTER_MODEL,
+    rawLength: response.data?.choices?.[0]?.message?.content?.length || 0,
+  };
+}
+
+async function generateMindmapWithFallback(file, res) {
+  try {
+    return await generateWithVercelStreamObject(file, res);
+  } catch (aiSdkError) {
+    console.warn('[Gateway] Vercel AI SDK streamObject failed:', aiSdkError.message);
+
+    try {
+      progress(res, 'streamObject lỗi, chuyển sang Gemini File API trực tiếp...', 40);
+      return await generateWithGeminiFile(file, res);
+    } catch (geminiError) {
+      console.warn('[Gateway] Gemini File API failed:', geminiError.message);
+      if (!canUseTextFallback(file)) throw geminiError;
+
+      const text = await readTextForFallback(file);
+      try {
+        return await generateWithGroqText(file, text, res);
+      } catch (groqError) {
+        console.warn('[Gateway] Groq failed:', groqError.message);
+        return generateWithOpenRouterText(file, text, res);
+      }
+    }
+  }
+}
+
+async function buildMindmapPayload(file, fileHash, res, startedAt) {
+  const generated = await generateMindmapWithFallback(file, res);
+  progress(res, 'Đang tạo Markdown từ JSON đã validate...', 85);
+
+  const markdown = generateMarkdownFromMindmap(generated.mindmap);
+  return {
+    markdown,
+    mindmap: generated.mindmap,
+    visualizationKey: fileHash,
+    stats: {
+      provider: generated.provider,
+      model: generated.model,
+      rawLength: generated.rawLength,
+      fileHash,
+      fileName: file.originalname,
+      fileType: file.mimetype,
+      fileSize: file.size,
+      processingTime: Date.now() - startedAt,
+      cached: false,
+      mainTopic: generated.mindmap.mainTopic,
+    },
+    cachedAt: new Date().toISOString(),
+  };
+}
+
+async function saveDocumentRecord(req, file, fileHash) {
+  const db = req.app.locals.usersDb;
+  if (!db || !req.session?.user) return;
+
   const docRecord = {
-    title: req.file.originalname,
-    fileType: req.file.mimetype,
-    size: req.file.size,
+    title: file.originalname,
+    fileType: file.mimetype,
+    size: file.size,
+    hash: fileHash,
     userId: req.session.user._id.toString(),
     username: req.session.user.username || 'unknown',
     createdAt: new Date(),
-    status: 'active'
+    status: 'active',
   };
-  const db = req.app.locals.usersDb;
-  db.collection('documents').insertOne(docRecord).catch(e => console.error("❌ Lỗi lưu tài liệu vào DB:", e));
 
-  jobs.set(jobId, { 
-    id: jobId, 
-    status: 'pending', 
-    buffer: req.file.buffer, // Buffer được lưu tạm thời
-    mimeType: req.file.mimetype, 
-    filename: req.file.originalname, 
-    results: [], 
-    startTime: Date.now() 
-  }); 
-  console.log(`Job created: ${jobId} for file ${req.file.originalname}`); 
-  res.status(202).json({ jobId }); 
-}, (err, req, res, next) => { 
-  console.error("Multer Upload Error:", err.message); 
-  if (err instanceof multer.MulterError) { 
-    if (err.code === 'LIMIT_FILE_SIZE') { 
-      return res.status(400).json({ error: `File quá lớn, tối đa 50MB.` }); 
-    } 
-    return res.status(400).json({ error: `Lỗi tải file: ${err.message}` }); 
-  } else if (err) { 
-    if (err.message.includes('Chỉ chấp nhận file')) { 
-      return res.status(400).json({ error: err.message }); 
-    } 
-    return res.status(500).json({ error: `Lỗi server không xác định khi tải file: ${err.message}` }); 
-  } 
-  next(); 
-});
+  db.collection('documents').insertOne(docRecord)
+    .catch((error) => console.error('Lỗi lưu tài liệu vào DB:', error));
+}
 
-router.get('/summarize-stream', authMiddleware.checkLoggedIn, (req, res) => { 
-  const { jobId } = req.query; 
-  const job = jobs.get(jobId); 
-  if (!jobId || !job) { 
-    console.log(`SSE connection failed: Job ${jobId} not found.`); 
-    return res.status(404).send('Job not found or expired.'); 
-  } 
-  console.log(`SSE client connected for job: ${jobId}`); 
-  res.writeHead(200, { 
-    'Content-Type': 'text/event-stream', 
-    'Cache-Control': 'no-cache', 
-    'Connection': 'keep-alive', 
-    'Access-Control-Allow-Origin': '*', 
-  }); 
-  sseClients.set(jobId, res); 
-  req.on('close', () => { 
-    console.log(`SSE client disconnected for job: ${jobId}`); 
-    sseClients.delete(jobId); 
-    const currentJob = jobs.get(jobId); 
-    if (currentJob && (currentJob.status === 'processing' || currentJob.status === 'pending')) { 
-      console.log(`Job ${jobId} still processing after client disconnect.`); 
-    } 
-    if (!res.writableEnded) { 
-      res.end(); 
-    } 
-  }); 
-  if (job.status === 'pending') { 
-    console.log(`Starting processing for pending job: ${jobId}`); 
-    processDocument(jobId).catch(error => { 
-      console.error(`❌ CRITICAL: Uncaught error starting processDocument for ${jobId}:`, error); 
-      sendSSE(sseClients.get(jobId), 'error', { message: `Lỗi nghiêm trọng khi bắt đầu xử lý: ${error.message}` }); 
-      if (sseClients.has(jobId)) { 
-        try { sseClients.get(jobId).end(); } catch (e) {} 
-        sseClients.delete(jobId); 
-      } 
-      if (jobs.has(jobId)) { 
-        const jobToError = jobs.get(jobId);
-          jobToError.status = 'error'; 
-        jobToError.error = `Lỗi nghiêm trọng: ${error.message}`; 
-        jobToError.buffer = null; // Dọn dẹp buffer
-      } 
-    }); 
-  } else { 
-    console.log(`Job ${jobId} status is already '${job.status}'. Sending final status.`); 
-    if (job.status === 'done') { 
-      sendSSE(res, 'complete', { 
-        markdown: job.result, 
-        visualizationUrl: `/upload/mindmap-visualization/${jobId}`, 
-        stats: job.stats || {} 
-      }); 
-      res.end(); 
-    } else if (job.status === 'error') { 
-      sendSSE(res, 'error', { message: `Lỗi xử lý trước đó: ${job.error || 'Lỗi không xác định'}` }); 
-      res.end(); 
-    } 
-  } 
-});
+async function processStreamingUpload(req, res) {
+  const file = req.file;
+  const startedAt = Date.now();
 
-// ========== MAIN PROCESSING FUNCTION - OPTIMIZED ==========
-async function processDocument(jobId) {
-  const job = jobs.get(jobId);
-  if (!job || job.status !== 'pending') {
-    console.warn(`Attempted to process job ${jobId} but its status is ${job?.status || 'not found'}.`);
-    return;
+  if (!file) {
+    return res.status(400).json({ error: 'Không có file nào được tải lên.' });
   }
 
-  console.log(`Processing document for job: ${jobId}`);
-  job.status = 'processing';
-  const sse = sseClients.get(jobId);
-  let extractedText = null; // Khai báo ở scope ngoài
+  writeSSEHeaders(res);
 
   try {
-    sendSSE(sse, 'progress', { message: '🔄 Bắt đầu xử lý tài liệu...' });
+    progress(res, 'Đã nhận file, đang tính SHA-256 để kiểm tra cache...', 5);
+    const fileHash = await hashFile(file.path);
+    await saveDocumentRecord(req, file, fileHash);
 
-    // Step 1: Extract text
-    sendSSE(sse, 'progress', { message: '📄 Đang trích xuất văn bản...' });
-    console.time(`extractText-${jobId}`);
-    extractedText = await extractTextSmart(job.buffer, job.mimeType, sse);
-    console.timeEnd(`extractText-${jobId}`);
-    
-    // Dọn dẹp buffer ngay sau khi trích xuất xong
-    job.buffer = null; 
-    console.log(`Job ${jobId}: Cleared file buffer from memory.`);
-
-    if (!extractedText || typeof extractedText !== 'string' || extractedText.trim().length < 50) {
-      const errorMsg = 'Không thể trích xuất đủ nội dung từ tài liệu. File có thể trống, bị lỗi hoặc định dạng không được hỗ trợ đầy đủ.';
-      console.error(`Error for job ${jobId}: ${errorMsg}. Text length: ${extractedText?.length}`);
-      throw new Error(errorMsg);
+    const key = cacheKey(fileHash);
+    const cached = await documentCache.get(key);
+    if (cached?.markdown) {
+      const payload = {
+        ...cached,
+        visualizationKey: fileHash,
+        stats: {
+          ...(cached.stats || {}),
+          cached: true,
+          processingTime: Date.now() - startedAt,
+        },
+      };
+      progress(res, 'Cache hit: đã tìm thấy mindmap cho file này.', 95, { cache: 'hit' });
+      sendSSE(res, 'complete', {
+        markdown: payload.markdown,
+        visualizationUrl: `/upload/mindmap-visualization/${fileHash}`,
+        stats: payload.stats,
+      });
+      return;
     }
 
-    sendSSE(sse, 'progress', { message: `✅ Đã trích xuất ${extractedText.length} ký tự`, textLength: extractedText.length });
-    console.log(`Job ${jobId}: Extracted ${extractedText.length} chars.`);
+    progress(res, 'Cache miss: file mới, đưa vào pool xử lý AI.', 12, { cache: 'miss' });
 
-    // Step 2: Split into chunks
-    const chunks = splitChunksSimple(extractedText, CHUNK_SIZE);
-    if (chunks.length === 0) {
-      throw new Error('Nội dung trích xuất không thể chia thành các phần để phân tích.');
-    }
-    sendSSE(sse, 'progress', { message: `📦 Đã chia thành ${chunks.length} phần để phân tích`, totalChunks: chunks.length });
-    console.log(`Job ${jobId}: Split into ${chunks.length} chunks.`);
-
-    // Step 3: Process chunks (Parallel/Sequential)
-    const processingMode = CHUNK_PROCESSING_MODE === 'sequential' ? 'sequential' : 'parallel';
-    const concurrentLimit = processingMode === 'parallel' ? Math.max(1, CHUNK_CONCURRENCY) : 1;
-    const batchDelay = 500;
-    sendSSE(sse, 'progress', { message: `🤖 Bắt đầu phân tích ${chunks.length} phần (chế độ ${processingMode})...` });
-
-    const analyses = [];
-    console.time(`analyzeChunks-${jobId}`);
-
-    if (processingMode === 'sequential' || concurrentLimit <= 1) {
-      for (let i = 0; i < chunks.length; i += 1) {
-        const result = await processSingleChunk(chunks[i], i, chunks.length, sse);
-        analyses.push(result);
-        sendSSE(sse, 'progress', {
-          message: `📊 Đã xử lý ${i + 1}/${chunks.length} phần`,
-          chunkCurrent: i + 1,
-          totalChunks: chunks.length,
-        });
+    // Kiểm tra giới hạn số trang (dưới 20 trang) đối với PDF và DOCX
+    let pageCount = 1;
+    if (file.mimetype === 'application/pdf') {
+      try {
+        progress(res, 'Đang kiểm tra số trang tài liệu PDF...', 15);
+        const pdfData = await getPDFPageCount(file.path);
+        pageCount = pdfData.numPages;
+      } catch (err) {
+        console.error('[PageCount] Lỗi đọc số trang PDF:', err);
+        throw new Error('Không thể đọc số trang của tài liệu PDF. File có thể bị lỗi.');
       }
+    } else if (file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+      try {
+        progress(res, 'Đang kiểm tra số trang tài liệu DOCX...', 15);
+        pageCount = getDocxPageCount(file.path);
+      } catch (err) {
+        console.error('[PageCount] Lỗi đọc số trang DOCX:', err);
+        throw new Error('Không thể đọc số trang của tài liệu Word (DOCX). File có thể bị lỗi.');
+      }
+    }
+
+    if (pageCount > 200) {
+      throw new Error(`Tài liệu quá dài (${pageCount} trang). Hệ thống chỉ chấp nhận tài liệu dưới 200 trang để đảm bảo hiệu suất AI.`);
+    }
+
+    let ownsInFlight = false;
+    let payloadPromise = inFlightDocuments.get(fileHash);
+    if (payloadPromise) {
+      progress(res, 'File này đang được xử lý bởi request khác, đang chờ kết quả dùng chung...', 30);
     } else {
-      for (let i = 0; i < chunks.length; i += concurrentLimit) {
-        const batch = chunks.slice(i, i + concurrentLimit);
-        const batchPromises = batch.map((chunk, batchIndex) => {
-          const chunkIndex = i + batchIndex;
-          return processSingleChunk(chunk, chunkIndex, chunks.length, sse);
-        });
-
-        const batchResults = await Promise.allSettled(batchPromises);
-        analyses.push(...batchResults.map((result) =>
-          result.status === 'fulfilled' ? result.value : {
-            nodes: [],
-            error: true,
-            summary: `Lỗi phân tích: ${result.reason?.message || 'Unknown error'}`,
-          }
-        ));
-
-        sendSSE(sse, 'progress', {
-          message: `📊 Đã xử lý ${Math.min(i + concurrentLimit, chunks.length)}/${chunks.length} phần`,
-          chunkCurrent: Math.min(i + concurrentLimit, chunks.length),
-          totalChunks: chunks.length,
-        });
-
-        if (i + concurrentLimit < chunks.length) {
-          await new Promise(resolve => setTimeout(resolve, batchDelay));
-        }
-      }
+      payloadPromise = runWithAiLimit(() => buildMindmapPayload(file, fileHash, res, startedAt));
+      inFlightDocuments.set(fileHash, payloadPromise);
+      ownsInFlight = true;
     }
 
-    console.timeEnd(`analyzeChunks-${jobId}`);
-
-    // Step 4: Aggregate results
-    sendSSE(sse, 'progress', { message: '📊 Đang tổng hợp kết quả JSON...' });
-    console.log(`Job ${jobId}: Aggregating ${analyses.length} JSON analysis results.`);
-    console.time(`aggregateJson-${jobId}`);
-    const rawRootName = job.filename ? job.filename.replace(/\.[^/.]+$/, '').trim() : '';
-    const rootName = rawRootName || 'Sơ đồ tư duy';
-    const aggregatedJsonResult = aggregateJsonResults(analyses, chunks, { rootName });
-    console.timeEnd(`aggregateJson-${jobId}`);
-
-    if (aggregatedJsonResult.error) {
-      throw new Error(aggregatedJsonResult.summary || "Lỗi tổng hợp kết quả phân tích JSON.");
-    }
-
-    sendSSE(sse, 'progress', { message: `📊 Tổng hợp JSON xong. Chủ đề chính: ${aggregatedJsonResult.mainTopic}` });
-    console.log(`Job ${jobId}: JSON Aggregation complete. Main topic: ${aggregatedJsonResult.mainTopic}`);
-
-    // Step 5: Generate final mindmap markdown
-    sendSSE(sse, 'progress', { message: '🗺️ Đang tạo sơ đồ tư duy từ JSON...' });
-    console.log(`Job ${jobId}: Generating final mindmap markdown from JSON...`);
-    console.time(`generateMarkdown-${jobId}`);
-    const mindmapMarkdown = generateMarkdownFromJson(aggregatedJsonResult);
-    console.timeEnd(`generateMarkdown-${jobId}`);
-
-    // Step 6: Finalize job state
-    job.status = 'done';
-    job.result = mindmapMarkdown; // Lưu kết quả Markdown
-    job.processingTime = Date.now() - job.startTime;
-    job.stats = {
-      totalChunks: chunks.length,
-      processedChunks: aggregatedJsonResult.analyzedChunks,
-      processingTime: job.processingTime,
-      textLength: extractedText.length,
-      mainTopic: aggregatedJsonResult.mainTopic
-    };
-
-    sendSSE(sse, 'complete', {
-      markdown: mindmapMarkdown,
-      visualizationUrl: `/upload/mindmap-visualization/${jobId}`,
-      stats: job.stats
+    const payload = await payloadPromise.finally(() => {
+      if (ownsInFlight) inFlightDocuments.delete(fileHash);
     });
 
-    console.log(`✅ Job ${jobId} completed successfully in ${job.processingTime}ms.`);
-
+    await documentCache.set(key, payload, CACHE_TTL_SECONDS);
+    progress(res, 'Hoàn tất, đã lưu kết quả vào cache.', 100);
+    sendSSE(res, 'complete', {
+      markdown: payload.markdown,
+      visualizationUrl: `/upload/mindmap-visualization/${fileHash}`,
+      stats: payload.stats,
+    });
   } catch (error) {
-    console.error(`❌ Processing failed for job ${jobId}:`, error);
-    job.status = 'error';
-    job.error = error.message || 'Lỗi không xác định';
-    sendSSE(sse, 'error', { message: `Lỗi xử lý tài liệu: ${job.error}` });
+    console.error('Document streaming failed:', error);
+    sendSSE(res, 'error', { message: error.message || 'Lỗi xử lý tài liệu.' });
   } finally {
-    console.log(`Job ${jobId}: Finalizing processing.`);
-    try { if (sse && !sse.writableEnded) { console.log(`Job ${jobId}: Closing SSE stream.`); sse.end(); } }
-    catch (e) { console.warn(`Job ${jobId}: Error closing SSE stream:`, e.message); }
-    sseClients.delete(jobId);
-    
-    // Đảm bảo buffer đã được dọn dẹp
-    if (job && job.buffer) { 
-        job.buffer = null; 
-        console.log(`Job ${jobId}: Cleared buffer in finally block.`); 
-    }
-    
-    // Đặt lịch xóa job khỏi bộ nhớ (quan trọng để tránh memory leak)
-    setTimeout(() => { 
-        if (jobs.has(jobId)) { 
-            console.log(`Job ${jobId}: Deleting job data from memory.`); 
-            jobs.delete(jobId); 
-        } 
-    }, 10 * 60 * 1000); // 10 phút sau khi xử lý xong
+    await cleanupLocalUpload(file.path);
+    if (!res.writableEnded) res.end();
   }
 }
 
-// Default route for /upload
-router.get('/', (req, res) => { res.redirect('/upload/page'); });
+router.get('/page', authMiddleware.checkLoggedIn, documentController.getUploadPage);
 
-// Mindmap visualization route
-router.get('/mindmap-visualization/:jobId', authMiddleware.checkLoggedIn, (req, res) => {
-  const { jobId } = req.params;
-  const job = jobs.get(jobId);
+router.post('/summarize-stream', authMiddleware.checkLoggedIn, handleDocumentUpload, (req, res) => {
+  processStreamingUpload(req, res);
+});
 
-  if (!job) {
-    console.warn(`[Visualization] Job not found in memory: ${jobId}`);
+router.post('/start-summarize', authMiddleware.checkLoggedIn, (req, res) => {
+  res.status(410).json({
+    error: 'Endpoint cũ đã được thay bằng POST /upload/summarize-stream để stream trực tiếp, không còn tạo job trong RAM.',
+  });
+});
+
+router.get('/', (req, res) => {
+  res.redirect('/upload/page');
+});
+
+router.get('/mindmap-visualization/:hash', authMiddleware.checkLoggedIn, async (req, res) => {
+  const { hash } = req.params;
+  if (!/^[a-f0-9]{64}$/i.test(hash)) {
+    return res.status(400).send('Visualization key không hợp lệ.');
+  }
+
+  const payload = await documentCache.get(cacheKey(hash));
+  if (!payload?.markdown) {
     return res.status(404).send(`
-        <h1 style="font-family: sans-serif; color: #d9534f;">404 - Không tìm thấy Job</h1>
-        <p style="font-family: sans-serif;">Job ID này không tồn tại. 
-        Sơ đồ trực quan chỉ được lưu tạm thời, có thể nó đã hết hạn (sau 10 phút) hoặc chưa từng tồn tại.</p>
-        <a href="/upload/page">Quay lại trang tải lên</a>
+      <h1 style="font-family: sans-serif; color: #d9534f;">404 - Không tìm thấy sơ đồ</h1>
+      <p style="font-family: sans-serif;">Kết quả có thể đã hết hạn cache hoặc server chưa cấu hình Redis bền vững.</p>
+      <a href="/upload/page">Quay lại trang tải lên</a>
     `);
   }
-
-  if (job.status !== 'done' || !job.result) {
-    console.warn(`[Visualization] Job not complete: ${jobId}, status: ${job.status}`);
-    return res.status(400).send(`
-        <h1 style="font-family: sans-serif; color: #f0ad4e;">400 - Job chưa hoàn thành</h1>
-        <p style="font-family: sans-serif;">Job này đang được xử lý (${job.status}) hoặc đã gặp lỗi trong quá trình phân tích. 
-        ${job.error ? `<br/><strong>Lỗi:</strong> ${job.error}` : ''}
-        </p>
-        <a href="/upload/page">Quay lại trang tải lên</a>
-    `);
-  }
-
-  const markdownContent = job.result;
-  const pageTitle = job.stats?.mainTopic || job.filename || "Sơ đồ tư duy";
 
   try {
-    const html = generateMindmapHTML(markdownContent, pageTitle);
-    res.setHeader('Content-Type', 'text/html');
+    const html = generateMindmapHTML(payload.markdown, payload.stats?.mainTopic || safeFileTitle(payload.stats?.fileName));
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(html);
-    
   } catch (error) {
-    console.error(`[Visualization] Error generating HTML for job ${jobId}:`, error);
-    res.status(500).send(`
-        <h1 style="font-family: sans-serif; color: #d9534f;">500 - Lỗi Server</h1>
-        <p style="font-family: sans-serif;">Đã xảy ra lỗi khi tạo trang HTML cho sơ đồ tư duy.</p>
-        <pre>${error.message}</pre>
-    `);
+    console.error(`[Visualization] Error generating HTML for hash ${hash}:`, error);
+    res.status(500).send('Không thể tạo trang trực quan hóa.');
   }
 });
 
-// ========== MINDMAP VISUALIZATION HTML GENERATOR ==========
-// ========== FIXED MINDMAP VISUALIZATION HTML ==========
-// ========== SIMPLIFIED MINDMAP VISUALIZATION HTML ==========
-// ========== FIXED MINDMAP VISUALIZATION HTML ==========
-function generateMindmapHTML(markdownContent, title = "Mindmap Visualization") {
-    if (!markdownContent || markdownContent.trim() === '') {
-        markdownContent = "# Lỗi\nNội dung Markdown trống hoặc không hợp lệ.";
-    }
+function generateMindmapHTML(markdownContent, title = 'Mindmap Visualization') {
+  const safeTitle = String(title || 'Mindmap Visualization')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 
-    // Chuẩn hóa Markdown
-    if (!markdownContent.startsWith('# ')) {
-        markdownContent = `# ${title}\n\n${markdownContent}`;
-    }
+  const normalizedMarkdown = markdownContent && markdownContent.trim()
+    ? markdownContent.trim()
+    : '# Lỗi\n\nKhông có nội dung Markdown.';
 
-    const escapedMarkdown = markdownContent
-        .replace(/\\/g, '\\\\')
-        .replace(/`/g, '\\`')
-        .replace(/\$\{/g, '\\${');
+  const escapedMarkdown = normalizedMarkdown
+    .replace(/\\/g, '\\\\')
+    .replace(/`/g, '\\`')
+    .replace(/\$\{/g, '\\${');
 
-    return `
+  return `
 <!DOCTYPE html>
 <html lang="vi">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${title}</title>
-    <!-- Sử dụng CDN chính thức từ markmap -->
-    <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
-    <script src="https://cdn.jsdelivr.net/npm/markmap-lib@0.15.4"></script>
-    <script src="https://cdn.jsdelivr.net/npm/markmap-view@0.15.4"></script>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f7f6; min-height: 100vh; padding: 15px; }
-        .container { max-width: 95%; margin: 15px auto; background: white; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); overflow: hidden; display: flex; flex-direction: column; }
-        .header { background: #4a69bd; color: white; padding: 20px 30px; text-align: center; border-bottom: 5px solid #3c5aa0; }
-        .header h1 { font-size: 2em; margin-bottom: 5px; font-weight: 600; }
-        .header p { font-size: 1em; opacity: 0.9; }
-        .content { display: flex; flex: 1; min-height: 650px; }
-        .markdown-panel { flex: 1; padding: 20px; background: #ffffff; border-right: 1px solid #e0e0e0; overflow-y: auto; max-height: 700px; }
-        .visualization-panel { flex: 2; padding: 20px; background: #fafafa; display: flex; flex-direction: column; }
-        .panel-header { font-size: 1.1em; font-weight: 600; margin-bottom: 15px; color: #333; border-bottom: 2px solid #4a69bd; padding-bottom: 5px; }
-        #mindmap { width: 100%; height: 100%; flex: 1; border: 1px solid #e0e0e0; border-radius: 8px; background: #fff; min-height: 500px; }
-        .markdown-content { background: #f8f9fa; border: 1px solid #e0e0e0; padding: 20px; border-radius: 8px; font-family: 'Consolas', 'Monaco', monospace; font-size: 0.9em; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word; overflow-y: auto; }
-        .controls { padding: 15px 20px; background: #e9ecef; border-top: 1px solid #d6dbe0; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
-        .btn { padding: 10px 20px; border: none; border-radius: 6px; font-size: 15px; font-weight: 500; cursor: pointer; transition: all 0.2s ease; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
-        .btn-primary { background-color: #007bff; color: white; }
-        .btn-primary:hover { background-color: #0056b3; }
-        .btn-secondary { background-color: #6c757d; color: white; }
-        .btn-secondary:hover { background-color: #5a6268; }
-        .loading-error { display: flex; justify-content: center; align-items: center; height: 100%; font-size: 16px; color: #6c757d; padding: 20px; text-align: center; }
-        .markmap-foreign { width: 100%; height: 100%; }
-        .markmap-svg { width: 100%; height: 100%; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${safeTitle}</title>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+  <script src="https://cdn.jsdelivr.net/npm/markmap-lib@0.15.4"></script>
+  <script src="https://cdn.jsdelivr.net/npm/markmap-view@0.15.4"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: "Segoe UI", Tahoma, sans-serif; background: #f5f7fb; color: #172033; }
+    .shell { min-height: 100vh; display: flex; flex-direction: column; }
+    header { padding: 18px 24px; background: #174ea6; color: #fff; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    header h1 { margin: 0; font-size: 20px; font-weight: 650; }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    button, a { border: 0; border-radius: 6px; padding: 9px 13px; font-size: 14px; cursor: pointer; text-decoration: none; }
+    .primary { background: #fff; color: #174ea6; }
+    .secondary { background: rgba(255,255,255,0.16); color: #fff; }
+    main { flex: 1; display: grid; grid-template-columns: minmax(280px, 380px) 1fr; min-height: 0; }
+    aside { padding: 18px; background: #fff; border-right: 1px solid #dbe2ef; overflow: auto; }
+    pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-size: 13px; line-height: 1.45; }
+    #mindmap { width: 100%; height: calc(100vh - 66px); background: #fbfcff; }
+    @media (max-width: 900px) {
+      main { grid-template-columns: 1fr; }
+      aside { max-height: 34vh; border-right: 0; border-bottom: 1px solid #dbe2ef; }
+      #mindmap { height: 62vh; }
+    }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>🗺️ Sơ đồ tư duy</h1>
-            <p>Trực quan hóa cấu trúc tài liệu của bạn</p>
-        </div>
-        <div class="content">
-            <div class="markdown-panel">
-                <h3 class="panel-header">Nội dung Markdown:</h3>
-                <div class="markdown-content"><pre><code>${escapedMarkdown}</code></pre></div>
-            </div>
-            <div class="visualization-panel">
-                <h3 class="panel-header">Sơ đồ tương tác:</h3>
-                <div id="mindmap">
-                    <div class="loading-error">Đang tải sơ đồ tư duy...</div>
-                </div>
-            </div>
-        </div>
-        <div class="controls">
-            <button class="btn btn-primary" onclick="downloadMindmap()">📥 Tải về (PNG)</button>
-            <button class="btn btn-secondary" onclick="window.print()">🖨️ In Sơ đồ</button>
-            <a href="/upload/page" class="btn btn-secondary">↩️ Quay lại Tải lên</a>
-        </div>
-    </div>
-    <script>
-        const markdownContent = \`${escapedMarkdown}\`;
-
-        function initializeMarkmap() {
-            const container = document.getElementById('mindmap');
-            
-            // Kiểm tra thư viện đã load đầy đủ chưa
-            if (typeof window.markmap === 'undefined' || 
-                typeof window.markmap.Transformer === 'undefined') {
-                
-                container.innerHTML = '<div class="loading-error">Đang tải thư viện D3/Markmap... (vui lòng chờ)</div>';
-                setTimeout(initializeMarkmap, 500);
-                return;
-            }
-
-            try {
-                const { Markmap, Transformer } = window.markmap;
-                
-                console.log('Markmap libraries loaded successfully');
-                
-                // Transform markdown
-                const transformer = new Transformer();
-                const { root, features } = transformer.transform(markdownContent);
-                
-                if (!root) {
-                    throw new Error('Không thể phân tích cấu trúc markdown');
-                }
-
-                console.log('Markdown transformed successfully');
-
-                // Clear container
-                container.innerHTML = '';
-                
-                // Create SVG element
-                const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-                svg.setAttribute('width', '100%');
-                svg.setAttribute('height', '100%');
-                svg.setAttribute('class', 'markmap-svg');
-                container.appendChild(svg);
-                
-                // Tạo markmap
-                Markmap.create(svg, null, root);
-                
-                console.log('Markmap created successfully');
-                
-            } catch (error) {
-                console.error('Error creating markmap:', error);
-                container.innerHTML = \`
-                    <div class="loading-error">
-                        <strong>Lỗi khi tạo sơ đồ:</strong><br/>
-                        \${error.message}<br/>
-                        <small style="margin-top: 10px; display: block;">
-                            Chi tiết lỗi: \${error.toString()}<br/>
-                            <button onclick="location.reload()" style="margin-top: 10px; padding: 5px 10px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">
-                                Thử lại
-                            </button>
-                        </small>
-                    </div>
-                \`;
-            }
-        }
-
-        function downloadMindmap() {
-            alert('Tính năng tải về sẽ được cập nhật trong phiên bản tiếp theo.');
-        }
-
-        // Hàm kiểm tra thư viện đã load xong chưa
-        function waitForLibraries() {
-            const container = document.getElementById('mindmap');
-            let attempts = 0;
-            const maxAttempts = 30; // 15 giây timeout
-            
-            function check() {
-                attempts++;
-                
-                if (typeof window.d3 !== 'undefined' && 
-                    typeof window.markmap !== 'undefined' && 
-                    typeof window.markmap.Transformer !== 'undefined') {
-                    
-                    console.log('All libraries loaded successfully');
-                    initializeMarkmap();
-                    return;
-                }
-                
-                if (attempts >= maxAttempts) {
-                    container.innerHTML = \`
-                        <div class="loading-error">
-                            <strong>Lỗi: Không thể tải thư viện</strong><br/>
-                            Thư viện D3 hoặc Markmap không tải được.<br/>
-                            <button onclick="location.reload()" style="margin-top: 10px; padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">
-                                Tải lại trang
-                            </button>
-                        </div>
-                    \`;
-                    return;
-                }
-                
-                container.innerHTML = \`<div class="loading-error">Đang tải thư viện... (\${attempts}/\${maxAttempts})</div>\`;
-                setTimeout(check, 500);
-            }
-            
-            check();
-        }
-
-        // Bắt đầu khi trang loaded
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', waitForLibraries);
-        } else {
-            waitForLibraries();
-        }
-
-        // Xử lý resize
-        window.addEventListener('resize', function() {
-            if (typeof window.markmap !== 'undefined') {
-                setTimeout(initializeMarkmap, 300);
-            }
-        });
-    </script>
+  <div class="shell">
+    <header>
+      <h1>${safeTitle}</h1>
+      <div class="actions">
+        <button class="primary" onclick="fitMap()">Fit</button>
+        <button class="secondary" onclick="window.print()">In</button>
+        <a class="secondary" href="/upload/page">Quay lại</a>
+      </div>
+    </header>
+    <main>
+      <aside><pre>${normalizedMarkdown.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre></aside>
+      <svg id="mindmap"></svg>
+    </main>
+  </div>
+  <script>
+    const markdownContent = \`${escapedMarkdown}\`;
+    let mm = null;
+    function render() {
+      if (!window.markmap || !window.markmap.Transformer || !window.markmap.Markmap) {
+        setTimeout(render, 200);
+        return;
+      }
+      const transformer = new window.markmap.Transformer();
+      const { root } = transformer.transform(markdownContent);
+      const svg = document.getElementById('mindmap');
+      svg.innerHTML = '';
+      mm = window.markmap.Markmap.create(svg, { autoFit: true, duration: 300 }, root);
+    }
+    function fitMap() {
+      if (mm && typeof mm.fit === 'function') mm.fit();
+    }
+    render();
+  </script>
 </body>
 </html>`;
 }
+
 module.exports = router;

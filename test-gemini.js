@@ -1,6 +1,6 @@
 // test-gemini.js
 require("dotenv").config();
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+const { GoogleGenAI } = require("@google/genai");
 
 const GEMINI_KEYS = (process.env.GEMINI_API_KEYS || "").split(",").map(k => k.trim()).filter(Boolean);
 const MODEL_NAME = "gemini-2.5-flash";
@@ -19,11 +19,13 @@ async function testGemini() {
     console.log(`\n🔑 Đang thử key thứ ${i + 1}: ${maskedKey}`);
     
     try {
-      const genAI = new GoogleGenerativeAI(key);
-      const model = genAI.getGenerativeModel({ model: MODEL_NAME });
-      const result = await model.generateContent("Xin chào, Gemini! Bạn có đang hoạt động không?");
+      const genAI = new GoogleGenAI({ apiKey: key });
+      const result = await genAI.models.generateContent({
+        model: MODEL_NAME,
+        contents: "Xin chào, Gemini! Bạn có đang hoạt động không?",
+      });
       console.log(`✅ Thành công với key ${maskedKey}! Phản hồi:`);
-      console.log(result.response.text());
+      console.log(result.text);
     } catch (err) {
       console.error(`❌ Thất bại với key ${maskedKey}:`, err.message || err);
     }

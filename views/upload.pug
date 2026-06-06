@@ -1,5 +1,54 @@
 extends ../views/layouts/default.pug
 
+block styles
+  style.
+    @keyframes pulse {
+      0% { opacity: 0.6; }
+      50% { opacity: 1; }
+      100% { opacity: 0.6; }
+    }
+    .skeleton-loading {
+      animation: pulse 1.5s infinite ease-in-out;
+    }
+    .skeleton-mindmap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 360px;
+      background: #fdfdfd;
+      border: 1px dashed #cbd5e1;
+      border-radius: 8px;
+      position: relative;
+      overflow: hidden;
+    }
+    .skeleton-node {
+      background: #e2e8f0;
+      border-radius: 20px;
+      height: 32px;
+      display: inline-block;
+      position: absolute;
+    }
+    .skeleton-node-root {
+      width: 140px;
+      height: 40px;
+      top: calc(50% - 20px);
+      left: calc(50% - 70px);
+      background: #cbd5e1;
+    }
+    .skeleton-node-sub1 { width: 100px; top: 30%; left: 20%; }
+    .skeleton-node-sub2 { width: 110px; top: 70%; left: 15%; }
+    .skeleton-node-sub3 { width: 100px; top: 25%; right: 20%; }
+    .skeleton-node-sub4 { width: 105px; top: 65%; right: 18%; }
+    .skeleton-line {
+      position: absolute;
+      background: #e2e8f0;
+    }
+    .skeleton-line-1 { height: 2px; width: 80px; top: 43%; left: 33%; transform: rotate(-15deg); }
+    .skeleton-line-2 { height: 2px; width: 90px; top: 57%; left: 31%; transform: rotate(15deg); }
+    .skeleton-line-3 { height: 2px; width: 80px; top: 41%; right: 33%; transform: rotate(15deg); }
+    .skeleton-line-4 { height: 2px; width: 95px; top: 55%; right: 30%; transform: rotate(-15deg); }
+
 block main
   .container.mt-4.upload-container
     .row.justify-content-center
@@ -14,7 +63,7 @@ block main
               br
               small.text-warning
                 i.fas.fa-info-circle.me-1
-                | Tối đa 50MB
+                | Tối đa 50MB hoặc dưới 200 trang
 
             form#uploadForm
               .mb-4
@@ -27,7 +76,7 @@ block main
                   input.form-control.d-none(type="file" name="documentFile" id="documentFile" accept=".pdf,.docx,.txt,.jpg,.jpeg,.png,.gif")
 
                   .mt-2
-                    small.text-muted PDF, DOCX, TXT, Ảnh (Tối đa 50MB)
+                    small.text-muted PDF, DOCX, TXT, Ảnh (Tối đa 50MB hoặc dưới 200 trang)
 
                   #fileInfo.mt-2
 
@@ -44,10 +93,48 @@ block main
                 span#progressText.badge.bg-primary.fs-6 0%
               .progress(role="progressbar" aria-label="Tiến trình xử lý" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" style="height: 12px;")
                 .progress-bar.progress-bar-striped.progress-bar-animated#progressBar(style="width: 0%")
+              
+              // Skeleton Screen
+              #skeletonArea.mt-3
+                h6.mb-2.text-muted
+                  i.fas.fa-project-diagram.me-2
+                  | Đang phân tích cấu trúc tài liệu...
+                .skeleton-mindmap.skeleton-loading
+                  .skeleton-node.skeleton-node-root
+                  .skeleton-node.skeleton-node-sub1
+                  .skeleton-node.skeleton-node-sub2
+                  .skeleton-node.skeleton-node-sub3
+                  .skeleton-node.skeleton-node-sub4
+                  .skeleton-line.skeleton-line-1
+                  .skeleton-line.skeleton-line-2
+                  .skeleton-line.skeleton-line-3
+                  .skeleton-line.skeleton-line-4
+                  span.text-muted.position-absolute(style="bottom: 20px; font-size: 0.9rem; font-weight: 500;") Sơ đồ tư duy đang được thiết lập...
+
+              #streamPreviewArea.mt-3(style="display:none;")
+                .d-flex.justify-content-between.align-items-center.mb-2
+                  h6.mb-0.text-muted
+                    i.fas.fa-stream.me-2
+                    | Luồng JSON đang sinh
+                  small#streamCharCount.text-muted 0 ký tự
+                pre#streamPreview.bg-light.text-dark.p-3.rounded-3(style="max-height: 220px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; font-size: 0.85rem;")
+              #liveMindmapArea.mt-3(style="display:none;")
+                h6.mb-2.text-muted
+                  i.fas.fa-project-diagram.me-2
+                  | Sơ đồ đang hình thành
+                svg#liveMindmap(style="width: 100%; height: 360px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff;")
 
             #errorArea.alert.alert-danger.mt-3(style="display:none;")
               i.fas.fa-exclamation-triangle.me-2
               span#errorMessage
+
+        .card.mt-4.demo-card
+          .card-body
+            h5.card-title.text-center.text-muted.mb-3
+              i.fas.fa-project-diagram.me-2
+              | Sơ đồ mindmap mẫu
+            svg#demoMindmap(style="width: 100%; height: 350px; border: 1px solid #eee; border-radius: 8px;")
+            p.text-center.text-muted.small.mt-2 Đây là ví dụ về kết quả bạn sẽ nhận được.
 
         .card.mt-4.upload-card#resultArea(style="display:none;")
           .card-header.bg-success.text-white.d-flex.align-items-center
@@ -68,9 +155,32 @@ block main
                 button.btn.btn-success.btn-lg.px-4.py-3#createMindmapBtn(disabled)
                   i.fas.fa-save.me-2
                   | Lưu và Tạo Mindmap
+                button.btn.btn-info.btn-lg.px-4.py-3#viewVisualizationBtn(type="button" style="display: none;")
+                  i.fas.fa-eye.me-2
+                  | Xem Sơ đồ trực quan
+                button.btn.btn-outline-primary.btn-lg.px-4.py-3#viewJsonBtn(type="button")
+                  i.fas.fa-code.me-2
+                  | Xem dữ liệu Markdown
                 button.btn.btn-outline-secondary.btn-lg.px-4.py-3#newUploadBtn(type="button")
                   i.fas.fa-plus.me-2
                   | Tải file mới
+
+            #jsonPreview.mt-4(style="display: none;")
+              .d-flex.justify-content-between.align-items-center.mb-3
+                h5.mb-0
+                  i.fas.fa-file-alt.me-2
+                  | Nội dung Markdown
+                .btn-group
+                  button.btn.btn-sm.btn-outline-success#copyJsonBtn
+                    i.fas.fa-copy.me-1
+                    | Sao chép
+                  button.btn.btn-sm.btn-outline-info#downloadJsonBtn
+                    i.fas.fa-download.me-1
+                    | Tải xuống
+
+              .card.border-0
+                .card-body.p-0
+                  pre#mindmapPreview.bg-light.text-dark.p-4.rounded-3(style="max-height: 400px; overflow-y: auto; white-space: pre-wrap; word-break: break-all;")
 
         #rawTextSection.mt-4.d-none
           h5.text-primary.mb-2
@@ -79,15 +189,44 @@ block main
           pre#rawTextArea.bg-dark.text-success.p-3.rounded(style="max-height: 300px; overflow-y: auto; white-space: pre-wrap; font-size: 0.85rem;")
 
 block scripts
+  script(src="https://cdn.jsdelivr.net/npm/markmap-lib@0.15.4")
+  script(src="https://cdn.jsdelivr.net/npm/markmap-view@0.15.4")
+
   script.
     // Biến toàn cục để theo dõi trạng thái
     let isSaving = false;
     let mindmapData = null;
     let visualizationUrl = null;
-    let eventSource = null;
+    let streamAbortController = null;
+    let streamRawJson = '';
     let isProcessing = false;
     let currentFile = null;
     let startTime = null;
+
+    function renderDemoMindmap() {
+      try {
+        if (typeof window.markmap === 'undefined' || typeof window.markmap.Transformer === 'undefined') {
+          setTimeout(renderDemoMindmap, 100);
+          return;
+        }
+
+        const { Transformer, Markmap } = window.markmap;
+
+        const sampleMarkdown = `# Demo Mindmap\n## 1. Tải lên\n  - PDF\n  - DOCX\n  - TXT\n## 2. Phân tích\n  - Trích xuất nội dung\n  - AI tóm tắt\n  - Tạo các nhánh\n## 3. Kết quả\n  - Sơ đồ tương tác\n  - Nội dung Markdown`;
+        const transformer = new Transformer();
+        const { root, features } = transformer.transform(sampleMarkdown.trim());
+
+        const svg = document.getElementById('demoMindmap');
+        if (svg) {
+          Markmap.create(svg, {}, root);
+        }
+      } catch (e) {
+        console.error("Lỗi render demo mindmap:", e);
+        const svg = document.getElementById('demoMindmap');
+        if(svg) svg.innerHTML = '<p class="text-center text-danger p-4">Không thể tải sơ đồ mẫu.</p>';
+      }
+    }
+    document.addEventListener('DOMContentLoaded', renderDemoMindmap);
 
     // DOM Elements
     const uploadForm = document.getElementById('uploadForm');
@@ -102,11 +241,22 @@ block scripts
     const errorArea = document.getElementById('errorArea');
     const errorMessage = document.getElementById('errorMessage');
     const createMindmapBtn = document.getElementById('createMindmapBtn');
+    const viewVisualizationBtn = document.getElementById('viewVisualizationBtn');
+    const viewJsonBtn = document.getElementById('viewJsonBtn');
     const newUploadBtn = document.getElementById('newUploadBtn');
+    const jsonPreview = document.getElementById('jsonPreview');
+    const mindmapPreview = document.getElementById('mindmapPreview');
+    const copyJsonBtn = document.getElementById('copyJsonBtn');
+    const downloadJsonBtn = document.getElementById('downloadJsonBtn');
     const fileUploadArea = document.querySelector('.file-upload-area');
     const rawTextSection = document.getElementById('rawTextSection');
     const rawTextArea = document.getElementById('rawTextArea');
     const completionTimeSpan = document.getElementById('completionTime');
+    const streamPreviewArea = document.getElementById('streamPreviewArea');
+    const streamPreview = document.getElementById('streamPreview');
+    const streamCharCount = document.getElementById('streamCharCount');
+    const liveMindmapArea = document.getElementById('liveMindmapArea');
+    const liveMindmap = document.getElementById('liveMindmap');
 
     // File Upload Handlers
     fileUploadArea.addEventListener('click', () => documentInput.click());
@@ -175,13 +325,22 @@ block scripts
       submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Đang tải lên...';
       submitBtn.disabled = true;
       progressArea.style.display = 'block';
+      const skeletonArea = document.getElementById('skeletonArea');
+      if (skeletonArea) skeletonArea.style.display = 'block';
       updateProgressBar(0, '0%');
       progressStatus.textContent = 'Đang khởi tạo kết nối...';
       resultArea.style.display = 'none';
+      jsonPreview.style.display = 'none';
       hideError();
       mindmapData = null;
       visualizationUrl = null;
-      if (eventSource) eventSource.close();
+      streamRawJson = '';
+      if (streamPreviewArea) streamPreviewArea.style.display = 'none';
+      if (streamPreview) streamPreview.textContent = '';
+      if (streamCharCount) streamCharCount.textContent = '0 ký tự';
+      if (liveMindmapArea) liveMindmapArea.style.display = 'none';
+      if (liveMindmap) liveMindmap.innerHTML = '';
+      if (streamAbortController) streamAbortController.abort();
 
       rawTextSection.classList.add('d-none');
       rawTextArea.textContent = '';
@@ -191,133 +350,310 @@ block scripts
       formData.append('documentFile', currentFile);
 
       try {
-        const startResponse = await fetch('/upload/start-summarize', { 
+        streamAbortController = new AbortController();
+        const streamResponse = await fetch('/upload/summarize-stream', { 
           method: 'POST', 
-          body: formData 
+          body: formData,
+          signal: streamAbortController.signal
         });
 
-        if (!startResponse.ok) {
+        if (!streamResponse.ok) {
           let errorData;
-          try { errorData = await startResponse.json(); }
-          catch (e) { errorData = { error: `Lỗi ${startResponse.status}: ${startResponse.statusText}` }; }
-          throw new Error(errorData.error || `Lỗi server ${startResponse.status}`);
+          try { errorData = await streamResponse.json(); }
+          catch (e) { errorData = { error: `Lỗi ${streamResponse.status}: ${streamResponse.statusText}` }; }
+          throw new Error(errorData.error || `Lỗi server ${streamResponse.status}`);
         }
-        
-        const { jobId } = await startResponse.json();
-        if (!jobId) throw new Error("Server không trả về Job ID hợp lệ.");
 
-        progressStatus.textContent = 'Đã có Job ID, đang kết nối stream...';
-        eventSource = new EventSource(`/upload/summarize-stream?jobId=${encodeURIComponent(jobId)}`);
+        if (!streamResponse.body) throw new Error('Trình duyệt không hỗ trợ đọc stream phản hồi.');
 
-        eventSource.onopen = () => {
-          console.log("SSE connection opened.");
-          progressStatus.textContent = 'Đã kết nối, đang xử lý tài liệu...';
-        };
-
-        eventSource.addEventListener('progress', (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            if (data.totalChunks && data.totalChunks > 0 && typeof data.chunkCurrent !== 'undefined') {
-              const percent = Math.max(0, Math.min(100, Math.round((data.chunkCurrent / data.totalChunks) * 100)));
-              updateProgressBar(percent, `${percent}%`);
-              progressStatus.textContent = `Đang xử lý phần ${data.chunkCurrent}/${data.totalChunks}...`;
-            } else if (data.message) {
-              progressStatus.textContent = data.message;
-              if (data.message.includes('trích xuất')) updateProgressBar(10, '10%');
-              else if (data.message.includes('chia thành')) updateProgressBar(15, '15%');
-              else if (data.message.includes('tổng hợp')) updateProgressBar(90, '90%');
-              else if (data.message.includes('tạo sơ đồ')) updateProgressBar(95, '95%');
-            }
-          } catch(e) {
-            console.error("Error parsing progress event data:", e, event.data);
-          }
-        });
-
-        eventSource.addEventListener('debug_raw', (event) => {
-          try {
-            rawTextSection.classList.remove('d-none');
-            const data = JSON.parse(event.data);
-            rawTextArea.textContent += `\n\n[Chunk ${data.chunk}] ${data.rawText}`;
-            rawTextArea.scrollTop = rawTextArea.scrollHeight;
-          } catch (e) {
-            console.error("Error parsing debug_raw event:", e, event.data);
-          }
-        });
-
-        eventSource.addEventListener('complete', (event) => {
-          console.log("SSE complete event received.");
-          if (eventSource) eventSource.close();
-          try {
-            const data = JSON.parse(event.data);
-            mindmapData = data.markdown;
-            visualizationUrl = data.visualizationUrl;
-
-            progressStatus.textContent = 'Hoàn thành!';
-            updateProgressBar(100, '100%');
-            const duration = ((Date.now() - startTime) / 1000).toFixed(1);
-            completionTimeSpan.innerHTML = `<i class="fas fa-clock me-1"></i> Thời gian: ${duration}s`;
-
-            setTimeout(() => {
-              progressArea.style.display = 'none';
-              resultArea.style.display = 'block';
-              isProcessing = false;
-              resetSubmitButton();
-              resultArea.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
-              createMindmapBtn.disabled = !mindmapData;
-            }, 500);
-          } catch (e) {
-            console.error("Lỗi parse JSON 'complete':", e, event.data);
-            showError('Lỗi xử lý dữ liệu kết quả từ server.');
-            resetProcessingState();
-          }
-        });
-
-        eventSource.addEventListener('error', (event) => {
-          console.error("SSE error_event received:", event.data);
-          if (eventSource) eventSource.close();
-          try {
-            const errorData = JSON.parse(event.data);
-            showError(`Lỗi từ Server: ${errorData.message || 'Lỗi không xác định'}`);
-          } catch(e) {
-            showError('Lỗi không xác định từ server hoặc mất kết nối.');
-          }
-          resetProcessingState();
-        });
-
-        eventSource.onerror = (e) => {
-          console.error("SSE Connection Error:", e);
-          if (!mindmapData && isProcessing) {
-            showError('Mất kết nối với server hoặc có lỗi mạng trong quá trình xử lý.');
-            if (eventSource) eventSource.close();
-            resetProcessingState();
-          } else if (!isProcessing && eventSource) {
-            eventSource.close();
-            eventSource = null;
-          }
-        };
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Đang xử lý...';
+        progressStatus.textContent = 'Đã kết nối stream, đang xử lý tài liệu...';
+        await readSSEStream(streamResponse.body);
 
       } catch (error) {
         console.error("Error in uploadForm submit:", error);
-        showError('Lỗi Khởi tạo: ' + error.message);
+        if (error.name !== 'AbortError') showError('Lỗi Khởi tạo: ' + error.message);
         resetProcessingState();
       }
     });
 
+    async function readSSEStream(body) {
+      const reader = body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const eventBlocks = buffer.split(/\n\n/);
+        buffer = eventBlocks.pop() || '';
+        eventBlocks.forEach(handleSSEBlock);
+      }
+
+      if (buffer.trim()) handleSSEBlock(buffer);
+    }
+
+    function handleSSEBlock(block) {
+      let eventName = 'message';
+      const dataLines = [];
+
+      block.split(/\r?\n/).forEach((line) => {
+        if (line.startsWith('event:')) eventName = line.slice(6).trim();
+        else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim());
+      });
+
+      if (!dataLines.length) return;
+
+      let data;
+      try {
+        data = JSON.parse(dataLines.join('\n'));
+      } catch (e) {
+        console.error('Không parse được SSE data:', e, dataLines.join('\n'));
+        return;
+      }
+
+      handleStreamEvent(eventName, data);
+    }
+
+    function handleStreamEvent(eventName, data) {
+      if (eventName === 'progress') {
+        if (data.message) progressStatus.textContent = data.message;
+        if (typeof data.percent === 'number') updateProgressBar(data.percent, `${Math.round(data.percent)}%`);
+        return;
+      }
+
+      if (eventName === 'object_delta') {
+        streamRawJson += data.delta || '';
+        streamPreviewArea.style.display = 'block';
+        streamPreview.textContent = streamRawJson.slice(-6000);
+        streamPreview.scrollTop = streamPreview.scrollHeight;
+        streamCharCount.textContent = `${data.receivedChars || streamRawJson.length} ký tự`;
+
+        // Dynamic JSON repair & rendering for real-time generative UI
+        if (streamRawJson.trim().length > 10) {
+          const repaired = repairIncompleteJson(streamRawJson);
+          if (repaired && typeof repaired === 'object') {
+            const skeletonArea = document.getElementById('skeletonArea');
+            if (skeletonArea) skeletonArea.style.display = 'none';
+            liveMindmapArea.style.display = 'block';
+            renderLiveMindmapFromObject(repaired);
+          }
+        }
+
+        if (parseInt(progressBar.getAttribute('aria-valuenow') || '0', 10) < 80) {
+          updateProgressBar(60, '60%');
+        }
+        return;
+      }
+
+      if (eventName === 'object_partial') {
+        streamRawJson = JSON.stringify(data.partial || {}, null, 2);
+        streamPreviewArea.style.display = 'block';
+        streamPreview.textContent = streamRawJson.slice(-6000);
+        streamPreview.scrollTop = streamPreview.scrollHeight;
+        streamCharCount.textContent = `${data.receivedChars || streamRawJson.length} ký tự`;
+
+        const skeletonArea = document.getElementById('skeletonArea');
+        if (skeletonArea) skeletonArea.style.display = 'none';
+        liveMindmapArea.style.display = 'block';
+
+        renderLiveMindmapFromObject(data.partial);
+        if (parseInt(progressBar.getAttribute('aria-valuenow') || '0', 10) < 80) {
+          updateProgressBar(65, '65%');
+        }
+        return;
+      }
+
+      if (eventName === 'complete') {
+        handleCompleteEvent(data);
+        return;
+      }
+
+      if (eventName === 'error') {
+        showError(`Lỗi từ Server: ${data.message || 'Lỗi không xác định'}`);
+        resetProcessingState();
+      }
+    }
+
+    function handleCompleteEvent(data) {
+      mindmapData = data.markdown;
+      visualizationUrl = data.visualizationUrl;
+      renderLiveMarkdown(mindmapData);
+
+      progressStatus.textContent = 'Hoàn thành!';
+      updateProgressBar(100, '100%');
+      const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+      completionTimeSpan.innerHTML = `<i class="fas fa-clock me-1"></i> Thời gian: ${duration}s`;
+
+      setTimeout(() => {
+        progressArea.style.display = 'none';
+        resultArea.style.display = 'block';
+        mindmapPreview.textContent = mindmapData || "Không có nội dung Markdown được tạo.";
+        isProcessing = false;
+        streamAbortController = null;
+        resetSubmitButton();
+        resultArea.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+        createMindmapBtn.disabled = !mindmapData;
+        if (visualizationUrl) {
+          viewVisualizationBtn.style.display = 'inline-flex';
+          viewVisualizationBtn.onclick = () => { window.open(visualizationUrl, '_blank'); };
+        } else {
+          viewVisualizationBtn.style.display = 'none';
+        }
+      }, 500);
+    }
+
+    function renderLiveMindmapFromObject(partial) {
+      if (!partial || typeof partial !== 'object') return;
+      const markdown = objectToMarkdown(partial);
+      if (!markdown || markdown.trim().length < 3) return;
+      renderLiveMarkdown(markdown);
+    }
+
+    function repairIncompleteJson(jsonStr) {
+      let cleaned = jsonStr.trim();
+      if (!cleaned) return null;
+
+      function tryRepair(str) {
+        let stack = [];
+        let inString = false;
+        let escaped = false;
+        let repaired = "";
+
+        for (let i = 0; i < str.length; i++) {
+          const char = str[i];
+          repaired += char;
+
+          if (escaped) {
+            escaped = false;
+            continue;
+          }
+          if (char === '\\' && inString) {
+            escaped = true;
+            continue;
+          }
+          if (char === '"') {
+            inString = !inString;
+            continue;
+          }
+          if (inString) continue;
+
+          if (char === '{' || char === '[') {
+            stack.push(char);
+          } else if (char === '}') {
+            if (stack[stack.length - 1] === '{') stack.pop();
+          } else if (char === ']') {
+            if (stack[stack.length - 1] === '[') stack.pop();
+          }
+        }
+
+        if (inString) repaired += '"';
+        
+        let temp = repaired.trim();
+        if (temp.endsWith(',')) {
+          temp = temp.slice(0, -1).trim();
+        }
+
+        let tempStack = [...stack];
+        while (tempStack.length > 0) {
+          const open = tempStack.pop();
+          if (open === '{') temp += '}';
+          else if (open === '[') temp += ']';
+        }
+
+        try {
+          return JSON.parse(temp);
+        } catch (e) {
+          return null;
+        }
+      }
+
+      let parsed = tryRepair(cleaned);
+      if (parsed) return parsed;
+
+      for (let len = cleaned.length - 1; len > 0 && cleaned.length - len < 150; len--) {
+        const char = cleaned[len];
+        if (char === ',' || char === ':' || char === '[' || char === '{' || char === '"') {
+          const prefix = cleaned.slice(0, len);
+          parsed = tryRepair(prefix);
+          if (parsed) return parsed;
+        }
+      }
+
+      return null;
+    }
+
+    // Convert structured object to Markdown format
+    function objectToMarkdown(source) {
+      const lines = [];
+      const clean = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+      const rootTitle = clean(source.mainTopic) || 'Sơ đồ tư duy';
+      lines.push(`# ${rootTitle}`);
+
+      if (source.summary) {
+        lines.push(`- ${clean(source.summary)}`);
+      }
+
+      const appendChild = (node, depth) => {
+        const title = clean(node?.title || node?.chapterTitle);
+        if (!title) return;
+        lines.push(`${'#'.repeat(Math.min(depth, 6))} ${title}`);
+        (node.points || []).forEach((point) => {
+          const text = clean(point);
+          if (text) lines.push(`- ${text}`);
+        });
+        (node.children || []).forEach((child) => appendChild(child, depth + 1));
+      };
+
+      (source.subTopics || []).forEach((topic) => appendChild(topic, 2));
+      return lines.join('\n');
+    }
+
+    function renderLiveMarkdown(markdown) {
+      if (!liveMindmap || !markdown) return;
+      try {
+        if (typeof window.markmap === 'undefined' || typeof window.markmap.Transformer === 'undefined') return;
+        const { Transformer, Markmap } = window.markmap;
+        const transformer = new Transformer();
+        const { root } = transformer.transform(markdown.trim());
+        liveMindmapArea.style.display = 'block';
+        liveMindmap.innerHTML = '';
+        Markmap.create(liveMindmap, { autoFit: true, duration: 200 }, root);
+      } catch (error) {
+        console.error('Không thể render live mindmap:', error);
+      }
+    }
+
     // Result Buttons Handlers
+    viewJsonBtn.addEventListener('click', () => {
+      jsonPreview.style.display = jsonPreview.style.display === 'none' ? 'block' : 'none';
+      if (jsonPreview.style.display === 'block') {
+        jsonPreview.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    });
+
     newUploadBtn.addEventListener('click', () => {
       console.log("New upload requested.");
       resetFileSelection();
       resultArea.style.display = 'none';
+      jsonPreview.style.display = 'none';
       progressArea.style.display = 'none';
       hideError();
       mindmapData = null;
       visualizationUrl = null;
       startTime = null;
-      if (eventSource) {
-        eventSource.close();
-        eventSource = null;
-        console.log("Closed existing SSE connection for new upload.");
+      streamRawJson = '';
+      if (streamPreviewArea) streamPreviewArea.style.display = 'none';
+      if (streamPreview) streamPreview.textContent = '';
+      if (streamCharCount) streamCharCount.textContent = '0 ký tự';
+      if (liveMindmapArea) liveMindmapArea.style.display = 'none';
+      if (liveMindmap) liveMindmap.innerHTML = '';
+      if (streamAbortController) {
+        streamAbortController.abort();
+        streamAbortController = null;
       }
       isProcessing = false;
       resetSubmitButton();
@@ -325,11 +661,48 @@ block scripts
       window.scrollTo({ top: 0, behavior: 'smooth' });
     });
 
+    copyJsonBtn.addEventListener('click', async () => {
+      if (mindmapData) {
+        try {
+          await navigator.clipboard.writeText(mindmapData);
+          copyJsonBtn.innerHTML = '<i class="fas fa-check me-1"></i>Đã sao chép!';
+          copyJsonBtn.classList.remove('btn-outline-success');
+          copyJsonBtn.classList.add('btn-success');
+          setTimeout(() => {
+            copyJsonBtn.innerHTML = '<i class="fas fa-copy me-1"></i>Sao chép';
+            copyJsonBtn.classList.remove('btn-success');
+            copyJsonBtn.classList.add('btn-outline-success');
+          }, 2000);
+        } catch (err) {
+          console.error('Failed to copy text: ', err);
+          alert('Không thể sao chép vào clipboard.');
+        }
+      }
+    });
 
+    downloadJsonBtn.addEventListener('click', () => {
+      if (mindmapData) {
+        try {
+          const blob = new Blob([mindmapData], { type: 'text/markdown;charset=utf-8' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.style.display = 'none';
+          a.href = url;
+          const safeFilename = (currentFile?.name || 'mindmap').replace(/\.[^/.]+$/, "").replace(/[^a-z0-9]/gi, '_').toLowerCase();
+          a.download = `${safeFilename}-${Date.now()}.md`;
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+        } catch (e) {
+          console.error("Error creating download link:", e);
+          alert("Không thể tạo file để tải xuống.");
+        }
+      }
+    });
 
-    // Save Mindmap Function - FIXED: Ngăn chặn gọi nhiều lần
+    // Save Mindmap Function
     async function saveMindmap() {
-      // Ngăn chặn gọi nhiều lần
       if (isSaving) {
         console.log("⏳ Đang lưu, vui lòng đợi...");
         return;
@@ -376,22 +749,11 @@ block scripts
           throw new Error(result.error || `Lỗi server ${response.status} khi lưu`);
         }
 
-        if (result.mindmapId) {
-          const editorUrl = '/editor/' + result.mindmapId;
-          console.log("🔄 Mở tab mới với URL:", editorUrl);
-          window.open(editorUrl, '_blank');
-          isSaving = false;
-          createMindmapBtn.disabled = false;
-          createMindmapBtn.innerHTML = '<i class="fas fa-save me-2"></i>Lưu và Tạo Mindmap';
-        } else if (result.redirectUrl) {
-          console.log("🔄 Mở tab mới với URL:", result.redirectUrl);
-          window.open(result.redirectUrl, '_blank');
-          isSaving = false;
-          createMindmapBtn.disabled = false;
-          createMindmapBtn.innerHTML = '<i class="fas fa-save me-2"></i>Lưu và Tạo Mindmap';
+        if (result.redirectUrl) {
+          console.log("🔄 Redirect đến:", result.redirectUrl);
+          window.location.href = result.redirectUrl;
         } else {
           alert(result.message || 'Lưu thành công!');
-          // Reset trạng thái sau khi lưu thành công
           isSaving = false;
           createMindmapBtn.disabled = false;
           createMindmapBtn.innerHTML = '<i class="fas fa-save me-2"></i>Lưu và Tạo Mindmap';
@@ -399,16 +761,14 @@ block scripts
 
       } catch (error) {
         console.error("❌ Lỗi khi lưu mindmap:", error);
-        alert('Lỗi khi lưu Mindmap:\\n' + error.message);
+        alert('Lỗi khi lưu Mindmap:\n' + error.message);
         
-        // Reset trạng thái khi có lỗi
         isSaving = false;
         createMindmapBtn.disabled = false;
         createMindmapBtn.innerHTML = '<i class="fas fa-save me-2"></i>Lưu và Tạo Mindmap';
       }
     }
 
-    // CHỈ DÙNG 1 EVENT LISTENER DUY NHẤT cho nút lưu
     createMindmapBtn.addEventListener('click', function(e) {
       e.preventDefault();
       saveMindmap();
@@ -418,6 +778,8 @@ block scripts
     function resetResultButtons() {
       createMindmapBtn.disabled = true;
       createMindmapBtn.innerHTML = '<i class="fas fa-save me-2"></i>Lưu và Tạo Mindmap';
+      viewVisualizationBtn.style.display = 'none';
+      viewVisualizationBtn.onclick = null;
     }
 
     function showError(message) {
@@ -443,10 +805,15 @@ block scripts
       resetSubmitButton();
       progressArea.style.display = 'none';
       updateProgressBar(0, '0%');
-      if (eventSource) {
-        eventSource.close();
-        eventSource = null;
-        console.log("Closed SSE connection during reset.");
+      streamRawJson = '';
+      if (streamPreviewArea) streamPreviewArea.style.display = 'none';
+      if (streamPreview) streamPreview.textContent = '';
+      if (streamCharCount) streamCharCount.textContent = '0 ký tự';
+      if (liveMindmapArea) liveMindmapArea.style.display = 'none';
+      if (liveMindmap) liveMindmap.innerHTML = '';
+      if (streamAbortController) {
+        streamAbortController.abort();
+        streamAbortController = null;
       }
       resetResultButtons();
     }
@@ -460,13 +827,9 @@ block scripts
 
     // Cleanup on page unload
     window.addEventListener('beforeunload', (event) => {
-      if (isProcessing && eventSource) {
-        console.log("Closing SSE connection on page unload.");
-        eventSource.close();
-        eventSource = null;
-      } else if (eventSource) {
-        eventSource.close();
-        eventSource = null;
+      if (streamAbortController) {
+        streamAbortController.abort();
+        streamAbortController = null;
       }
     });
 
