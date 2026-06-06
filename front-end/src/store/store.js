@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { temporal } from 'zundo'
 import { devtools } from 'zustand/middleware'
 import dagre from 'dagre'
+import { fastLayout } from '../utils/markdownToMindmap'
 import {
   addEdge,
   applyNodeChanges,
@@ -528,14 +529,13 @@ const storeCreator = (set, get) => ({
   },
 
   runAutoLayout: () => {
-    const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(
+    const { nodes: layoutedNodes, edges: layoutedEdges } = fastLayout(
       get().nodes,
-      get().edges,
-      'LR'
+      get().edges
     )
     set({
-      nodes: layoutedNodes,
-      edges: layoutedEdges,
+      nodes: [...layoutedNodes],
+      edges: [...layoutedEdges],
       needsFitView: true, 
     })
   },

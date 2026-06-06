@@ -39,6 +39,8 @@ exports.postRegister = async (req, res) => {
             username: username.toLowerCase().trim(),
             password: password, // Nên hash password
             avatar: "https://mediamart.vn/images/uploads/2022/713193b6-a8b3-471d-ab04-c38dae2c1da4.jpg",
+            role: 'student',
+            status: 'active',
             createdAt: new Date(),
             updatedAt: new Date()
         };
@@ -63,6 +65,8 @@ exports.postRegister = async (req, res) => {
             name: newUser.username,
             username: newUser.username,
             email: newUser.email,
+            role: newUser.role,
+            status: newUser.status,
             avatar: null
         };
 
@@ -94,12 +98,29 @@ exports.postLogin = async (req, res) => {
             req.flash('error_msg', 'Email hoặc mật khẩu không chính xác!');
             return res.redirect('/login');
         }
+
+        // Kiểm tra xem tài khoản có bị khóa không
+        const userStatus = user.status || 'active';
+        if (userStatus === 'locked') {
+            req.session.user = {
+                _id: user._id,
+                email: user.email,
+                username: user.username,
+                name: user.name || user.username,
+                role: user.role || 'student',
+                status: userStatus,
+                avatar: user.avatar || null
+            };
+            return res.redirect('/account-locked');
+        }
         
         req.session.user = {
             _id: user._id,
             email: user.email,
             username: user.username,
             name: user.name || user.username,
+            role: user.role || 'student',
+            status: userStatus,
             avatar: user.avatar || null
         };
 

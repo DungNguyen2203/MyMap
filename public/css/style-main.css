@@ -1,17 +1,15 @@
+/* ============================================================
+   MINDTREE — GLOBAL STYLES (Dark Premium Theme)
+   ============================================================ */
+
+/* --- ANIMATIONS --- */
 @keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(30px); /* Bắt đầu từ vị trí thấp hơn 30px */
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0); /* Trở về vị trí ban đầu */
-  }
+  from { opacity: 0; transform: translateY(30px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-/* 2. Tạo một class để áp dụng hiệu ứng */
 .fade-in-up {
-  opacity: 0; 
+  opacity: 0;
   animation: fadeInUp 0.7s ease-out forwards;
 }
 
@@ -19,51 +17,112 @@
 .delay-2 { animation-delay: 0.2s; }
 .delay-3 { animation-delay: 0.3s; }
 
+
+/* --- HEADER — GLASSMORPHISM DARK --- */
 .colors-header {
-    background-color: #360941 !important; 
+    background: rgba(10, 8, 24, 0.85) !important;
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
 }
+
+/* --- FOOTER — DARK THEME --- */
 .colors-footer {
-    background-color: #3e2544 !important; 
+    background: rgba(10, 8, 24, 0.9) !important;
+    backdrop-filter: blur(12px);
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
+
+/* --- BODY & HEADER FIXED --- */
 body > header {
     position: fixed;
-    top: 0;
-    left: 0;
+    top: 0; left: 0;
     width: 100%;
-    z-index: 1000; 
-    background-color: #ffffff; /* Luôn là nền trắng */
+    z-index: 1000;
     padding: 0.75rem 0;
-    border-bottom: 1px solid #393a3b;
-}
-body {
-    padding-top: 90px; 
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-.menu-info{
-    background-color: #360941 !important;
+body {
+    padding-top: 90px;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: #0a0a1a;
+    color: #f0f0f5;
+}
+
+
+/* --- HEADER USER MENU --- */
+.menu-info {
+    background-color: transparent !important;
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    transition: all 0.2s ease;
+}
+.menu-info:hover {
+    background-color: rgba(255, 255, 255, 0.08) !important;
+    border-color: rgba(255, 255, 255, 0.15);
+}
+
+/* Dropdown menu dark */
+.dropdown-menu {
+    background: rgba(20, 15, 40, 0.95);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+.dropdown-item {
+    color: rgba(255, 255, 255, 0.8);
+    border-radius: 6px;
+    margin: 2px 6px;
+    padding: 8px 12px;
+    transition: all 0.15s ease;
+}
+
+.dropdown-item:hover,
+.dropdown-item:focus {
+    background: rgba(140, 82, 255, 0.15);
     color: #ffffff;
 }
-.menu-info:hover{
-  background-color: #3c096c !important;
+
+.dropdown-item.text-danger {
+    color: #ff6b6b !important;
 }
 
-/*=== MODAL XÁC NHẬN XÓA === */
+.dropdown-item.text-danger:hover {
+    background: rgba(255, 107, 107, 0.15);
+    color: #ff8a8a !important;
+}
 
+.dropdown-item.text-primary {
+    color: #8c52ff !important;
+}
+
+.dropdown-item.text-primary:hover {
+    background: rgba(140, 82, 255, 0.15);
+    color: #a77bff !important;
+}
+
+.dropdown-divider {
+    border-color: rgba(255, 255, 255, 0.06);
+}
+
+
+/* ============================================================
+   CONFIRM MODAL — DARK THEME
+   ============================================================ */
 .modal-overlay {
     position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(33, 37, 41, 0.6); /* Nền đen mờ */
-    
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background-color: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
     display: flex;
     align-items: center;
     justify-content: center;
-    
     z-index: 2000;
-    
-    /* Mặc định ẩn đi */
     opacity: 0;
     visibility: hidden;
     transition: all 0.3s ease;
@@ -74,145 +133,131 @@ body {
     visibility: visible;
 }
 
-.modal-content {
-    background-color: white;
+.modal-overlay > .modal-content {
+    background: rgba(20, 15, 40, 0.95);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
     padding: 24px 28px;
-    border-radius: 12px;
-    box-shadow: 0 8px 30px rgba(0,0,0,0.15);
+    border-radius: 16px;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.4);
     width: 100%;
     max-width: 450px;
     text-align: center;
-    
-    /* Hiệu ứng phóng to khi hiện ra */
+    color: #f0f0f5;
     transform: scale(0.95);
     transition: transform 0.3s ease;
 }
 
-.modal-overlay.show .modal-content {
+.modal-overlay.show > .modal-content {
     transform: scale(1);
 }
 
-.modal-title {
-    font-weight: 600;
-    margin-bottom: 8px;
-}
+.modal-title { font-weight: 600; margin-bottom: 8px; color: #f0f0f5; }
+.modal-text { color: rgba(255,255,255,0.6); margin-bottom: 24px; }
+.modal-actions { display: flex; justify-content: center; gap: 12px; }
+.modal-actions .btn { padding: 10px 20px; font-weight: 500; border-radius: 8px; }
 
-.modal-text {
-    color: #6c757d;
-    margin-bottom: 24px;
-}
 
-.modal-actions {
-    display: flex;
-    justify-content: center;
-    gap: 12px;
-}
-
-.modal-actions .btn {
-    padding: 10px 20px;
-    font-weight: 500;
-    border-radius: 8px;
-}
-
+/* ============================================================
+   SEARCH BOX — DARK THEME
+   ============================================================ */
 .search-container-header {
   position: relative;
-  flex-grow: 1; /* Cho phép co giãn */
-  max-width: 500px; /* Giới hạn chiều rộng */
-  margin: 0 2rem; /* Khoảng cách với logo và user */
+  flex-grow: 1;
+  max-width: 500px;
+  margin: 0 2rem;
 }
 
-.search-form-header {
-  display: flex;
-}
+.search-form-header { display: flex; }
 
-/* Chỉnh sửa bo tròn cho input */
 .search-form-header .form-control {
   border-top-right-radius: 0;
   border-bottom-right-radius: 0;
 }
 
-/* Chỉnh sửa bo tròn cho nút */
 .search-form-header .btn {
   border-top-left-radius: 0;
   border-bottom-left-radius: 0;
-  /* Đảm bảo nút đè lên viền input, không bị hở 1px */
-  margin-left: -1px; 
-  z-index: 1; 
-
-  background-color: #0881fb;   /* Màu nền trắng xám (nổi bật) */
-  color: #ffff;             /* Màu icon tím đậm (giống header) */
+  margin-left: -1px;
+  z-index: 1;
+  background-color: rgba(140, 82, 255, 0.6);
+  color: #fff;
+  border: none;
 }
 
-
-/* ===== THANH TÌM KIẾM ===== */
+/* Search box compact */
 .search-box-compact {
   position: relative;
   z-index: 1500;
   transition: all 0.3s ease;
 }
 
-/* Ô input bình thường */
 .search-box-compact input[type="text"] {
   width: 260px;
   transition: width 0.3s ease, box-shadow 0.3s ease;
 }
 
 .search-box-compact.active input[type="text"] {
-  width: 1000px; /* phình thêm 100px */
-  box-shadow: 0 0 8px rgba(0, 0, 0, 0.25);
+  width: 500px;
+  box-shadow: 0 0 12px rgba(140, 82, 255, 0.3);
 }
 
-
-/*CSS cho ô tìm kiếm */
 .search-box-compact .search-form-header {
   display: flex;
   align-items: center;
-  background-color: rgba(255, 255, 255, 0.15); /* Nền hơi trong suốt */
-  border-radius: 20px; /* Bo tròn */
-  overflow: hidden; /* Đảm bảo mọi thứ bên trong bo tròn */
-}
-.search-box-compact .form-control {
-  border: none; /* Bỏ viền */
-  background: transparent; /* Nền trong suốt */
-  color: #fff; /* Chữ màu trắng */
-  padding: 0.5rem 1rem;
-  height: 38px; /* Chiều cao cố định như các input khác */
-  flex-grow: 1; /* Cho phép input giãn ra */
-}
-.search-box-compact .form-control::placeholder {
-  color: rgba(255, 255, 255, 0.7);
-}
-.search-box-compact .form-control:focus {
-  outline: none;
-  box-shadow: none; /* Bỏ box-shadow mặc định của Bootstrap khi focus */
-  background-color: rgba(255, 255, 255, 0.2); /* Nền hơi đậm hơn khi focus */
-}
-.search-box-compact .btn-search-icon {
-  background-color: transparent; /* Nút trong suốt */
-  border: none; /* Bỏ viền */
-  color: #fff; /* Icon màu trắng */
-  padding: 0.5rem 0.75rem;
-  cursor: pointer;
-  display: flex; /* Dùng flex để căn icon */
-  align-items: center;
-  justify-content: center;
-}
-.search-box-compact .btn-search-icon:hover {
-  color: #272abc; /* Sáng hơn khi hover */
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  transition: border-color 0.2s;
 }
 
-/* Gợi ý sổ xuống dưới */
+.search-box-compact .search-form-header:focus-within {
+  border-color: rgba(140, 82, 255, 0.3);
+}
+
+.search-box-compact .form-control {
+  border: none;
+  background: transparent;
+  color: #fff;
+  padding: 0.5rem 1rem;
+  height: 38px;
+  flex-grow: 1;
+}
+.search-box-compact .form-control::placeholder { color: rgba(255, 255, 255, 0.5); }
+.search-box-compact .form-control:focus {
+  outline: none;
+  box-shadow: none;
+  background-color: rgba(255, 255, 255, 0.04);
+}
+
+.search-box-compact .btn-search-icon {
+  background-color: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s;
+}
+.search-box-compact .btn-search-icon:hover {
+  color: #8c52ff;
+}
+
+
+/* --- SEARCH RESULTS DROPDOWN --- */
 #search-results {
   position: absolute;
-  top: 100%; /* Ngay dưới input */
-  left: 0;
-  width: 100%;
-  background: #fff;
-  border: 1px solid #ddd;
-  border-top: 1px solid #ddd;
-  border-radius: 0 0 8px 8px;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+  top: 100%;
+  left: 0; width: 100%;
+  background: rgba(20, 15, 40, 0.97);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-top: none;
+  border-radius: 0 0 12px 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
   z-index: 3000;
   display: none;
   max-height: 300px;
@@ -223,57 +268,66 @@ body {
 #search-results a {
   display: block;
   padding: 10px 15px;
-  color: #333;
+  color: rgba(255,255,255,0.8);
   text-decoration: none;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  transition: background 0.15s;
 }
 #search-results a:last-child { border-bottom: none; }
-#search-results a:hover { background: #efd3d3; }
+#search-results a:hover { background: rgba(140, 82, 255, 0.12); color: #fff; }
 
-/* Hiệu ứng trượt nhẹ xuống */
 @keyframes fadeDown {
   from { opacity: 0; transform: translateY(-5px); }
-  to { opacity: 1; transform: translateY(0); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
+header .container .dropdown { margin-left: 15px; }
 
-/* Điều chỉnh lại khoảng cách của dropdown user để nó không bị dính vào search */
-header .container .dropdown {
-  margin-left: 15px; /* Khoảng cách với thanh tìm kiếm */
-}
 
-/* === TOAST NOTIFICATION & PROGRESS BAR === */
-
-/* Bọc toast để bo tròn cả thanh progress */
+/* ============================================================
+   TOAST NOTIFICATION — DARK THEME
+   ============================================================ */
 #appToast {
-  background-color: #ffffff;
+  background-color: rgba(20, 15, 40, 0.95);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
   overflow: hidden;
+  color: #f0f0f5;
 }
 
-/* Tùy chỉnh màu sắc cho các loại thông báo */
-#appToast .toast-header .text-success { color: #198754 !important; }
-#appToast .toast-header .text-danger { color: #dc3545 !important; }
-#appToast .toast-header .text-info { color: #0dcaf0 !important; }
+#appToast .toast-header {
+  background: transparent;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  color: #f0f0f5;
+}
 
-/* Thanh thời gian (progress bar) */
+#appToast .toast-header .text-success { color: #51cf66 !important; }
+#appToast .toast-header .text-danger  { color: #ff6b6b !important; }
+#appToast .toast-header .text-info    { color: #5ce1e6 !important; }
+
+#appToast .toast-body { color: rgba(255,255,255,0.8); }
+
 .toast-progress {
-  height: 4px; /* Độ dày của thanh */
-  background-color: #0d6efd; /* Màu mặc định */
-  width: 0%; /* Bắt đầu từ 0 */
+  height: 4px;
+  background-color: #8c52ff;
+  width: 0%;
 }
 
-/* Đổi màu thanh progress theo loại thông báo */
-#appToast.toast-success .toast-progress { background-color: #198754; }
-#appToast.toast-danger .toast-progress { background-color: #dc3545; }
-#appToast.toast-info .toast-progress { background-color: #0dcaf0; }
+#appToast.toast-success .toast-progress { background-color: #51cf66; }
+#appToast.toast-danger  .toast-progress { background-color: #ff6b6b; }
+#appToast.toast-info    .toast-progress { background-color: #5ce1e6; }
 
-/* Keyframe animation cho thanh chạy */
 @keyframes runProgress {
   from { width: 100%; }
-  to { width: 0%; }
+  to   { width: 0%; }
 }
 
 #appToast.show .toast-progress {
-  /* Chạy animation trong 2 giây (khớp data-bs-delay) */
-  animation: runProgress 2s linear forwards; 
+  animation: runProgress 2s linear forwards;
+}
+
+/* Toast close button */
+#appToast .btn-close {
+  filter: invert(1);
 }

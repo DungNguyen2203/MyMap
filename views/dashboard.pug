@@ -28,6 +28,16 @@ block main
 
   //- NỘI DUNG DASHBOARD (ban đầu ẩn nếu có màn hình chào mừng)
   .dashboard-layout(class=!currentFolder && !searchQuery && user.isFirstLogin ? 'initially-hidden' : '')
+    //- Aurora Mesh Gradient Background Blobs
+    .aurora-bg
+      .aurora-blob.blob-1
+      .aurora-blob.blob-2
+      .aurora-blob.blob-3
+      .aurora-blob.blob-4
+    //- Floating Particles
+    .particles-container
+      - for (var i = 0; i < 12; i++)
+        .particle
     aside.dashboard-sidebar
       nav.sidebar-nav
         ul

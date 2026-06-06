@@ -1,0 +1,74 @@
+extends layouts/admin-layout.pug
+
+block admin_content
+  .d-flex.justify-content-between.align-items-center.mb-4
+    h2.mb-0 Thống kê hệ thống
+    span.text-muted Cập nhật hôm nay: #{new Date().toLocaleDateString('vi-VN')}
+
+  .row.mb-4
+    .col-md-3.col-sm-6.mb-3
+      .card.stats-card.bg-primary.text-white.p-3
+        .d-flex.justify-content-between.align-items-center
+          div
+            h6.text-uppercase.mb-1 Tổng người dùng
+            h3.mb-0 #{stats.totalUsers}
+          i.fas.fa-users.fa-2x.opacity-50
+    .col-md-3.col-sm-6.mb-3
+      .card.stats-card.bg-danger.text-white.p-3
+        .d-flex.justify-content-between.align-items-center
+          div
+            h6.text-uppercase.mb-1 Tài khoản bị khóa
+            h3.mb-0 #{stats.lockedUsers}
+          i.fas.fa-user-slash.fa-2x.opacity-50
+    .col-md-3.col-sm-6.mb-3
+      .card.stats-card.bg-success.text-white.p-3
+        .d-flex.justify-content-between.align-items-center
+          div
+            h6.text-uppercase.mb-1 Sơ đồ tư duy
+            h3.mb-0 #{stats.totalMindmaps}
+          i.fas.fa-project-diagram.fa-2x.opacity-50
+    .col-md-3.col-sm-6.mb-3
+      .card.stats-card.bg-warning.text-dark.p-3
+        .d-flex.justify-content-between.align-items-center
+          div
+            h6.text-uppercase.mb-1 Tài liệu tải lên
+            h3.mb-0 #{stats.totalDocs}
+          i.fas.fa-file-shield.fa-2x.opacity-50
+
+  .row
+    .col-md-8
+      .card.admin-card
+        .card-header.admin-card-header
+          i.fas.fa-circle-info.text-primary.me-2
+          | Hướng dẫn Quản trị
+        .card-body
+          p Chào mừng bạn đến với trang quản trị hệ thống 
+            strong MindTree
+            | .
+          p Với vai trò là Quản trị viên, bạn có đầy đủ các công cụ quyền lực để:
+          ul.mb-0
+            li
+              strong Quản lý danh sách người dùng: 
+              | Theo dõi thông tin tài khoản và phân cấp vai trò.
+            li
+              strong Khóa các tài khoản vi phạm: 
+              | Đình chỉ quyền đăng nhập tạm thời hoặc vĩnh viễn đối với các hành vi xâm hại hoặc spam hệ thống.
+            li
+              strong Kiểm duyệt tài liệu hệ thống: 
+              | Kiểm tra và loại bỏ các file tài liệu không hợp lệ, vi phạm bản quyền hay tài liệu không lành mạnh.
+    .col-md-4
+      .card.admin-card
+        .card-header.admin-card-header
+          i.fas.fa-server.text-secondary.me-2
+          | Thông tin Máy chủ
+        .card-body.p-0
+          ul.list-group.list-group-flush
+            li.list-group-item.d-flex.justify-content-between.align-items-center
+              span Cơ sở dữ liệu:
+              span.badge.bg-success MongoDB Atlas
+            li.list-group-item.d-flex.justify-content-between.align-items-center
+              span Bộ nhớ đệm:
+              span.badge.bg-primary In-Memory Jobs
+            li.list-group-item.d-flex.justify-content-between.align-items-center
+              span Phiên bản NodeJS:
+              span.badge.bg-dark #{process.version}

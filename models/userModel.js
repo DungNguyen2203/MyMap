@@ -134,3 +134,47 @@ exports.updateLastLogin = async (db, userId) => {
 exports.isFirstLogin = (user) => {
     return !user.lastLogin;
 };
+
+// Lấy toàn bộ danh sách người dùng cho Admin
+exports.findAllUsers = async (db) => {
+    try {
+        return await db.collection('users').find({}).sort({ createdAt: -1 }).toArray();
+    } catch (error) {
+        console.error('❌ Lỗi findAllUsers:', error);
+        throw error;
+    }
+};
+
+// Cập nhật trạng thái tài khoản (active / locked)
+exports.updateUserStatus = async (db, userId, status) => {
+    try {
+        if (!ObjectId.isValid(userId)) {
+            throw new Error('ID người dùng không hợp lệ');
+        }
+        const userObjectId = new ObjectId(userId);
+        return await db.collection('users').updateOne(
+            { _id: userObjectId },
+            { $set: { status, updatedAt: new Date() } }
+        );
+    } catch (error) {
+        console.error('❌ Lỗi updateUserStatus:', error);
+        throw error;
+    }
+};
+
+// Cập nhật vai trò người dùng (student / admin)
+exports.updateUserRole = async (db, userId, role) => {
+    try {
+        if (!ObjectId.isValid(userId)) {
+            throw new Error('ID người dùng không hợp lệ');
+        }
+        const userObjectId = new ObjectId(userId);
+        return await db.collection('users').updateOne(
+            { _id: userObjectId },
+            { $set: { role, updatedAt: new Date() } }
+        );
+    } catch (error) {
+        console.error('❌ Lỗi updateUserRole:', error);
+        throw error;
+    }
+};

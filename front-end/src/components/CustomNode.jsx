@@ -273,8 +273,28 @@ function CustomNode({ id, data, selected }) {
         <div ref={textSizerRef} className="text-sizer" aria-hidden="true" />
       </div>
 
-      <Handle type="target" position={Position.Left} />
-      <Handle type="source" position={Position.Right} />
+      {/* Target handle: where parent connects */}
+      {!(data.isRoot || id === 'node-1') && (
+        <Handle 
+          type="target" 
+          position={data.isLeft ? Position.Right : Position.Left} 
+          id="target" 
+        />
+      )}
+
+      {/* Source handle(s): where children connect */}
+      {(data.isRoot || id === 'node-1') ? (
+        <>
+          <Handle type="source" position={Position.Right} id="source-right" />
+          <Handle type="source" position={Position.Left} id="source-left" />
+        </>
+      ) : (
+        <Handle 
+          type="source" 
+          position={data.isLeft ? Position.Left : Position.Right} 
+          id="source" 
+        />
+      )}
 
       {(isHovered || selected) && !isTexting && (
         <>

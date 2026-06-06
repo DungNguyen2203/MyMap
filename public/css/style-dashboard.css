@@ -1,914 +1,306 @@
 
+/* ============================================================
+   MINDTREE DASHBOARD — DARK PREMIUM THEME
+   Aurora Mesh + Glassmorphism 2.0 + Micro-animations
+   ============================================================ */
+
+/* --- CSS CUSTOM PROPERTIES (Design Tokens) --- */
+:root {
+    --bg-deep: #0a0a1a;
+    --bg-surface: rgba(255, 255, 255, 0.04);
+    --bg-glass: rgba(255, 255, 255, 0.06);
+    --bg-glass-hover: rgba(255, 255, 255, 0.10);
+    --border-glass: rgba(255, 255, 255, 0.08);
+    --border-glass-hover: rgba(255, 255, 255, 0.15);
+    --text-primary: #f0f0f5;
+    --text-secondary: rgba(255, 255, 255, 0.6);
+    --text-muted: rgba(255, 255, 255, 0.35);
+    --accent-purple: #8c52ff;
+    --accent-cyan: #5ce1e6;
+    --accent-pink: #ff66c4;
+    --accent-blue: #4f8cff;
+    --font-display: 'Space Grotesk', 'Inter', sans-serif;
+    --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    --radius-sm: 8px;
+    --radius-md: 16px;
+    --radius-lg: 24px;
+    --shadow-card: 0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    --shadow-card-hover: 0 20px 60px rgba(0, 0, 0, 0.4), 0 0 80px rgba(140, 82, 255, 0.08);
+    --transition-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+
 /* --- BỐ CỤC CHÍNH --- */
 .dashboard-layout {
     display: grid;
     min-height: calc(108vh - 72px);
-    background-image: linear-gradient(135deg, #ffecee 0%, #bbdbfe 100%);
+    background: var(--bg-deep);
+    position: relative;
+    overflow: hidden;
+    font-family: var(--font-body);
 }
 
-/* === STYLE CHO TRẠNG THÁI DASHBOARD TRỐNG === */
-.empty-dashboard-container {
-    margin-top: 30px;
-    flex-direction: column;
-    align-items: center;
-    height: 100%;
-    text-align: center;
-    position: relative; /* Giữ lại để định vị cho helper-text nếu cần */
-}
 
-/* Tiêu đề chính "Chưa có mindmap nào!" */
-.empty-title {
-    text-align: center; /* Căn giữa theo chiều ngang */
-    font-family: 'Poppins', sans-serif; /* Dùng font Poppins cho hiện đại */
-    font-size: 1.5rem;  /* Cỡ chữ to, nổi bật */
-    font-weight: 600;   /* Chữ đậm */
-    color: #343a40;     /* Màu xám đen, trông chuyên nghiệp */
-    text-transform: none; 
-    letter-spacing: 3px;     /* Tăng khoảng cách giữa các chữ cái */
-    margin-bottom: 0.5rem; /* Tạo khoảng trống với lưới mindmap bên dưới */
-    align-items: center;
-    justify-content: center;
-}
-.sub-empty-title {
-    font-size: 1.2rem;   /* Cỡ chữ nhỏ hơn tiêu đề chính */
-    font-weight: 400;    /* Chữ thường, không in đậm */
-    color: #6c757d;      /* Màu xám nhạt */
-    margin-top: 0.5rem;  /* Tạo một chút khoảng cách với dòng trên */
-    letter-spacing: normal; /* Bỏ giãn cách chữ */
-    text-transform: none;   /* Bỏ VIẾT IN HOA */
-}
-.bi.bi-folder-x.blank-folder{
-    font-size: 11rem; /* Icon lớn */
-    color: #8c52ff;  
-    margin-bottom: 2rem;
-    opacity: 0.7;
-}
-.material-symbols-outlined.blank_folder{
-    margin-top: 20px;
-    font-size: 15rem; /* Icon lớn */
-    color: #8c52ff;  
-    margin-bottom: 2rem;
-    opacity: 0.7;
-}
-/* Dòng chữ hướng dẫn gần nút dấu cộng */
-.fab-helper-arrow { 
-    position: fixed; 
-    bottom: 90px; 
-    left: 110px; 
-    
-}
-.helper-arrow {
-    position: absolute;
-    bottom: -15px; 
-    left: -20px; 
-    stroke: #d1d1d2;
-}
-.helper-text{
-    margin : 0;
-    font-style: italic; 
-    color: #adb5bd; 
-    max-width: 250px; 
-   
-}   
-.fab-helper-text{
+/* ============================================================
+   AURORA MESH GRADIENT BACKGROUND
+   ============================================================ */
+.aurora-bg {
     position: fixed;
-    bottom: 130px;
-    left: 180px;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
 }
 
-/* --- SIDEBAR ĐIỀU KHIỂN --- */
+.aurora-blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(130px);
+    opacity: 0.5;
+    mix-blend-mode: screen;
+    will-change: transform;
+}
+
+.blob-1 {
+    width: 700px; height: 700px;
+    background: radial-gradient(circle, rgba(140, 82, 255, 0.4) 0%, transparent 70%);
+    top: -15%; left: -10%;
+    animation: aurora-drift-1 25s ease-in-out infinite;
+}
+
+.blob-2 {
+    width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(92, 225, 230, 0.35) 0%, transparent 70%);
+    top: 50%; right: -10%;
+    animation: aurora-drift-2 30s ease-in-out infinite;
+}
+
+.blob-3 {
+    width: 500px; height: 500px;
+    background: radial-gradient(circle, rgba(255, 102, 196, 0.3) 0%, transparent 70%);
+    bottom: -10%; left: 30%;
+    animation: aurora-drift-3 22s ease-in-out infinite;
+}
+
+.blob-4 {
+    width: 400px; height: 400px;
+    background: radial-gradient(circle, rgba(79, 140, 255, 0.25) 0%, transparent 70%);
+    top: 30%; left: 50%;
+    animation: aurora-drift-4 28s ease-in-out infinite;
+}
+
+@keyframes aurora-drift-1 {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    33% { transform: translate(80px, 60px) scale(1.15); }
+    66% { transform: translate(-40px, 30px) scale(0.95); }
+}
+
+@keyframes aurora-drift-2 {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    33% { transform: translate(-100px, -50px) scale(1.1); }
+    66% { transform: translate(50px, -80px) scale(1.05); }
+}
+
+@keyframes aurora-drift-3 {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    50% { transform: translate(120px, -60px) scale(1.2); }
+}
+
+@keyframes aurora-drift-4 {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    33% { transform: translate(-60px, 80px) scale(1.1); }
+    66% { transform: translate(80px, -40px) scale(0.9); }
+}
+
+
+/* ============================================================
+   FLOATING PARTICLES (Pure CSS)
+   ============================================================ */
+.particles-container {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+.particle {
+    position: absolute;
+    width: 3px; height: 3px;
+    background: rgba(255, 255, 255, 0.4);
+    border-radius: 50%;
+    animation: particle-float linear infinite;
+    box-shadow: 0 0 6px rgba(140, 82, 255, 0.3);
+}
+
+.particle:nth-child(1)  { left:  5%; animation-duration: 18s; animation-delay: 0s;   width: 2px; height: 2px; }
+.particle:nth-child(2)  { left: 12%; animation-duration: 22s; animation-delay: 2s;   width: 3px; height: 3px; }
+.particle:nth-child(3)  { left: 22%; animation-duration: 16s; animation-delay: 4s;   width: 2px; height: 2px; }
+.particle:nth-child(4)  { left: 33%; animation-duration: 24s; animation-delay: 1s;   width: 4px; height: 4px; }
+.particle:nth-child(5)  { left: 40%; animation-duration: 20s; animation-delay: 3s;   width: 2px; height: 2px; }
+.particle:nth-child(6)  { left: 52%; animation-duration: 19s; animation-delay: 5s;   width: 3px; height: 3px; }
+.particle:nth-child(7)  { left: 60%; animation-duration: 23s; animation-delay: 0.5s; width: 2px; height: 2px; }
+.particle:nth-child(8)  { left: 70%; animation-duration: 17s; animation-delay: 2.5s; width: 3px; height: 3px; }
+.particle:nth-child(9)  { left: 78%; animation-duration: 21s; animation-delay: 4.5s; width: 2px; height: 2px; }
+.particle:nth-child(10) { left: 85%; animation-duration: 25s; animation-delay: 1.5s; width: 4px; height: 4px; }
+.particle:nth-child(11) { left: 92%; animation-duration: 18s; animation-delay: 3.5s; width: 2px; height: 2px; }
+.particle:nth-child(12) { left: 48%; animation-duration: 26s; animation-delay: 6s;   width: 3px; height: 3px; }
+
+@keyframes particle-float {
+    0%   { transform: translateY(110vh) rotate(0deg);   opacity: 0; }
+    10%  { opacity: 0.6; }
+    90%  { opacity: 0.6; }
+    100% { transform: translateY(-10vh) rotate(360deg); opacity: 0; }
+}
+
+
+/* ============================================================
+   NOISE/GRAIN OVERLAY
+   ============================================================ */
+.grain-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9998;
+    pointer-events: none;
+    opacity: 0.035;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+    background-repeat: repeat;
+    background-size: 256px 256px;
+}
+
+
+/* ============================================================
+   SIDEBAR — GLASSMORPHISM 2.0
+   ============================================================ */
 .dashboard-sidebar {
     position: fixed;
-    top: 72px; 
+    top: 72px;
     left: 0;
     width: 90px;
     height: calc(100vh - 72px);
-    background-image: linear-gradient(to bottom, #f2f3ff, #ffd6ff);
-    background-color: #e0c1f6;
-    border-right: 1px solid #e9ecef;
+    background: rgba(15, 10, 30, 0.65);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border-right: 1px solid var(--border-glass);
     padding: 16px 12px;
-    
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 20px;
-    z-index: 100; 
+    z-index: 100;
+    /* Subtle inner light on top */
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
+
 
 /* --- KHUNG NỘI DUNG CHÍNH --- */
 .dashboard-content {
     overflow-y: auto;
     padding: 32px;
     margin-left: 90px;
+    position: relative;
+    z-index: 1;
+    /* Fade in animation */
+    opacity: 0;
+    animation: fadeInUp 0.8s ease-out 0.3s forwards;
+}
+
+/* Đảm bảo nội dung nằm trên background */
+.dashboard-content > * {
+    position: relative;
+    z-index: 1;
+}
+
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(30px); }
+    to   { opacity: 1; transform: translateY(0); }
 }
 
 
-/* --- NÚT TẠO MỚI --- */
-.create-mindmap-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 56px;
-    height: 56px;
-    padding: 0;
-    border-radius: 50%;
-    background-color: transparent;
-    border: 2px solid #8c52ff;
-    color: #8c52ff;
-    text-decoration: none;
-    font-size: 1.5rem;
-    box-shadow: none;
-    /* Nền sẽ đổi màu trong 0.2s, NHƯNG chỉ bắt đầu sau khi đợi 0.4s */
-    transition: background-color 0.2s ease-in-out 0.4s, color 0.2s ease-in-out 0.4s;
-}
-
-/* Hiệu ứng cho icon bên trong nút */
-.create-mindmap-btn i {
-    /* Icon sẽ xoay trong 0.5s, bắt đầu ngay lập tức */
-    transition: transform 0.5s ease-in-out;
-}
-
-.create-mindmap-btn:hover {
-    /* Khi hover, kích hoạt việc đổi màu nền và màu chữ */
-    background-color: #8c52ff;
-    color: white;
-    transform: scale(1.05); /* Giữ lại hiệu ứng phóng to nhẹ */
-}
-
-/* Khi hover, kích hoạt việc xoay icon */
-.create-mindmap-btn:hover i {
-    transform: rotate(360deg);
-}
-
-
-/* --- MENU ĐIỀU HƯỚNG (ICON VÀ CHỮ) --- */
+/* ============================================================
+   SIDEBAR NAVIGATION
+   ============================================================ */
 .sidebar-nav { width: 100%; }
 .sidebar-nav ul { list-style: none; padding: 0; margin: 0; }
 
 .sidebar-nav a {
     display: flex;
-    /* THAY ĐỔI: Xếp item theo chiều dọc */
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    
     width: 100%;
-    height: 72px; /* Chiều cao cho mỗi mục */
-    border-radius: 8px;
-    
-    color: #525252;
+    height: 72px;
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
     text-decoration: none;
-    transition: all 0.2s ease;
+    transition: all 0.25s var(--transition-smooth);
+    position: relative;
+    overflow: hidden;
 }
 
 .sidebar-nav a:hover {
-    background-color: #ede9ff;
-    color: #9d4edd;
+    background: var(--bg-glass-hover);
+    color: var(--text-primary);
 }
 
+/* Active Indicator Glow */
 .sidebar-nav a.active {
-    background-color: #ede9ff;
-    color: #9d4edd;
+    background: rgba(140, 82, 255, 0.12);
+    color: var(--text-primary);
 }
 
-/* Tùy chỉnh cho icon */
+.sidebar-nav a.active::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 50%;
+    transform: translateY(-50%);
+    width: 3px; height: 55%;
+    background: linear-gradient(180deg, var(--accent-purple), var(--accent-cyan));
+    border-radius: 0 4px 4px 0;
+    box-shadow: 0 0 16px rgba(140, 82, 255, 0.5), 0 0 4px rgba(92, 225, 230, 0.3);
+}
+
+/* Icons */
 .sidebar-nav a i {
     font-size: 1.25rem;
-    margin-bottom: 6px; /* Khoảng cách giữa icon và chữ */
+    margin-bottom: 6px;
+    transition: transform 0.25s var(--transition-smooth);
 }
 
-/* Tùy chỉnh cho chữ */
+.sidebar-nav a:hover i {
+    transform: scale(1.15);
+}
+
+/* Labels */
 .sidebar-nav a span {
-    font-size: 0.7rem; /* Cỡ chữ nhỏ */
+    font-size: 0.7rem;
     font-weight: 500;
-}
-
-/* --- CÁC STYLE CỦA LƯỚI MINDMAP (GIỮ NGUYÊN) --- */
-.mindmap-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 24px; }
-.mindmap-card:hover { transform: translateY(-5px); box-shadow: 0 4px 10px rgba(0,0,0,0.08); border-color: #0d6efd; }
-.mindmap-card .preview-image { aspect-ratio: 4 / 3; background-color: #f4f0f5; border-bottom: 1px solid #e9ecef; border-radius: 8px 8px 8px 8px;}
-.mindmap-card .card-title { padding: 16px; font-weight: 600; }
-
-/* --- HIỆU ỨNG HOVER CHO MINDMAP CARD --- */
-
-/* 1. Chuẩn bị cho card để chứa các nút hành động */
-.mindmap-card {
-    position: relative; /* Quan trọng để định vị các nút con */
-}
-/* Link bao bọc ảnh và tiêu đề */
-.mindmap-card .card-link {
-    text-decoration: none;
-    color: inherit;
-    display: block;
-}
-
-/* 2. Khối chứa các nút hành động (mặc định bị ẩn) */
-.card-actions {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    
-    display: flex;
-    justify-content: center;
-    gap: 15px; /* Khoảng cách giữa 2 nút */
-    
-    padding: 16px;
-    background: linear-gradient(to top, rgba(0,0,0,0.6), transparent); /* Lớp nền mờ */
-    border-bottom-left-radius: 8px;
-    border-bottom-right-radius: 8px;
-    
-    /* Hiệu ứng trượt lên */
-    opacity: 0;
-    transform: translateY(10px);
-    transition: all 0.25s ease;
-}
-
-/* 3. Khi hover vào card, hiển thị khối nút hành động */
-.mindmap-card:not(.is-editing):hover .card-actions {
-    opacity: 1;
-    transform: translateY(0);
-}
-
-/* 4. Style cho các nút "Chỉnh sửa" và "Xóa" */
-.btn-action {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    border: none;
-    
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    
-    background-color: rgba(255, 255, 255, 0.9);
-    color: #343a40;
-    font-size: 0.9rem;
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.btn-action:hover {
-    background-color: rgb(38, 233, 24);
-    transform: scale(1.1);
-}
-
-/* Tùy chỉnh màu cho nút xóa khi hover */
-.btn-action.btn-delete:hover {
-    background-color: #dc3545;
-    color: white;
-}
-.btn-action.btn-move:hover {
-    background-color: #4800fd;
-    color: white;
-}
-
-.card-title-display a {
-    text-decoration: none; /* Bỏ gạch chân */
-    color: inherit;        /* Kế thừa màu chữ đen từ card cha */
-    transition: color 0.2s ease; /* Thêm hiệu ứng chuyển màu */
-}
-
-/* Thêm hiệu ứng khi di chuột vào tiêu đề */
-.card-title-display a:hover {
-    color: #0d6efd; /* Đổi thành màu xanh dương khi hover */
+    font-family: var(--font-body);
 }
 
 
-/* --- STYLE CHO TIÊU ĐỀ CHÍNH CỦA TRANG --- */
+/* ============================================================
+   TIÊU ĐỀ TRANG — SHIMMER GRADIENT
+   ============================================================ */
 .content-title {
-    text-align: center; /* Căn giữa theo chiều ngang */
-    font-family: 'Poppins', sans-serif; /* Dùng font Poppins cho hiện đại */
-    font-size: 2.25rem;  /* Cỡ chữ to, nổi bật */
-    font-weight: 700;   /* Chữ đậm */
-    color: #343a40;     /* Màu xám đen, trông chuyên nghiệp */
-    
-    /* Hiệu ứng nghệ thuật */
-    text-transform: none; /* VIẾT IN HOA */
-    letter-spacing: 3px;     /* Tăng khoảng cách giữa các chữ cái */
-    
-    margin-bottom: 2.5rem; /* Tạo khoảng trống với lưới mindmap bên dưới */
-    background: linear-gradient(45deg, #8c52ff, #5ce1e6, #ff66c4);
-    background-size: 200% 200%;
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    animation: shimmer 3s ease-in-out infinite;
-    position: relative;
-}
-
-/*------------------------------------------*/
-
-
-/* --- HIỆU ỨNG HOVER CHO CARD TRONG THÙNG RÁC --- */
-
-/* Căn chỉnh tiêu đề và nút Dọn rác */
-.content-header-trash {
-    display: flex;
-    align-items: center;
-    margin-bottom: 1.5rem; 
-    position: relative; 
-    justify-content: center;
-}
-.content-title-trash {
-    margin-bottom: 2rem; 
     text-align: center;
-    font-family: 'Poppins', sans-serif; 
-    font-size: 2.25rem;  
-    font-weight: 700;   
-    color: #343a40;    
-    text-transform: none; 
-    letter-spacing: 3px;     
-    background: linear-gradient(45deg, #8c52ff, #5ce1e6, #ff66c4);
-    background-size: 200% 200%;
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    animation: shimmer 3s ease-in-out infinite;
-    position: relative;
-}
-
-
-/* Style cho nút Dọn sạch rác */
-#btn-empty-trash {
-    background-color: #dc3545;
-    color: white;
-    border: none;
-    padding: 0.5rem 1rem;
-    border-radius: 5px;
-    cursor: pointer;
-    font-weight: 500;
-
-    position: absolute;
-    right: 0;
-}
-#btn-empty-trash:hover {
-    background-color: #c82333;
-}
-    /* Style cho nút Xóa vĩnh viễn */
-.btn-delete-permanent-trash {
-    color: #343a40; /* Màu đỏ cảnh báo */
-}
-.btn-delete-permanent-trash:hover {
-    color: #ffffff;
-    background-color: #c82333;
-}
-
-
-
-/* Khối chứa nút khôi phục (ẩn mặc định) */
-.trash-card-actions {
-    display: flex; /* Biến container thành flex container */
-    justify-content: center; /* Căn giữa theo chiều ngang */
-    align-items: center; /* Căn giữa theo chiều dọc */
-    gap: 10px; /* Tạo khoảng cách giữa các icon, bạn có thể điều chỉnh */
-    position: absolute;
-    /* Căn giữa theo chiều dọc và ngang */
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    
-    z-index: 3; /* Nằm trên cùng */
-    opacity: 0;
-    transition: all 0.25s ease;
-}
-
-/* Khi hover vào card, hiện nút khôi phục */
-.mindmap-card:hover .card-footer,
-.mindmap-card:hover .trash-card-actions {
-    opacity: 1;
-}
-
-/* Tùy chỉnh màu cho nút khôi phục khi hover */
-.btn-action.btn-recover:hover {
-    background-color: #4800fd; /* Màu xanh lá cây */
-    color: white;
-}
-
-/* nút xóa */
-.mindmap-card .card-footer {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    
-    display: flex;
-    align-items: center;
-    justify-content: center;
-
-    /* Hiệu ứng kính mờ */
-    background-color: rgba(255, 255, 255, 0.7);
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
-    border-top: 1px solid rgba(0, 0, 0, 0.1);
-    font-size: 0.8rem;
-    padding: 10px 16px;
-    
-    /* Mặc định ẩn đi */
-    opacity: 0;
-    transition: all 0.25s ease;
-    z-index: 2; /* Nằm trên ảnh nhưng dưới nút recover */
-}
-
-/* --- STYLE CHO GIAO DIỆN THÙNG RÁC TRỐNG --- */
-.empty-trash-container {
-    margin-bottom: 0px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 100%; /* Chiếm toàn bộ chiều cao của khung nội dung */
-    text-align: center;
-    color: #6c757d;
-}
-
-.empty-trash-container .empty-icon {
-    font-size: 6rem; /* Icon lớn */
-    color: #8c52ff;  /* Màu tím giống Canva */
-    margin-bottom: 2rem;
-    opacity: 0.7;
-    margin-top: 0px;
-}
-
-.empty-trash-container .empty-title {
-    font-size: 1.5rem;
-    font-weight: 600;
-    color: #343a40;
-    margin-bottom: 0.5rem;
-}
-
-.empty-trash-container .empty-text {
-    max-width: 400px; /* Giới hạn chiều rộng của dòng chữ phụ */
-}
-
-
-/* === KHỐI MENU TẠO MỚI (Floating Action Button) - PHIÊN BẢN BÊN TRÁI === */
-
-/* Container chính, cố định ở góc dưới bên trái */
-.create-new-container {
-    position: fixed;
-    bottom: 30px;
-    left: 15px;
-    z-index: 1000;
-    display: flex;
-    align-items: center;
-    flex-direction: row-reverse; /* Đảo ngược thứ tự: nút chính ở bên phải */
-
-}
-
-/* Nút bấm chính hình tròn */
-.main-fab-btn {
-    width: 60px;
-    height: 60px;
-    border-radius: 50%;
-    background: linear-gradient(45deg, #0d6efd, #0dcaf0);
-    color: white;
-    border: none;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.5rem;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-    cursor: pointer;
-    transition: transform 0.3s ease;
-    z-index: 10;
-}
-
-/* Icon '+' bên trong nút */
-.main-fab-btn i {
-    transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-/* Khi hover vào container, nút chính xoay */
-.create-new-container:hover .main-fab-btn i {
-    transform: rotate(225deg);
-}
-
-/* Khối chứa các tùy chọn con */
-.fab-options {
-    display: flex;
-    align-items: center;
-    margin-left: 15px;
-    opacity: 0;
-    visibility: hidden;
-    transform: scale(0.9) translateX(-20px);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-/* Khi hover vào container, các tùy chọn con hiện ra */
-.create-new-container:hover .fab-options {
-    opacity: 1;
-    visibility: visible;
-    transform: scale(1) translateX(0);
-}
-
-/* Danh sách các tùy chọn */
-.fab-options-list {
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
-}
-
-/* Style cho mỗi tùy chọn con */
-.fab-option-item {
-    background-color: #ffffff;
-    padding: 8px 16px;
-    border-radius: 20px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.15);
-    color: #343a40;
-    font-weight: 500;
-    font-size: 0.9rem;
-    text-decoration: none;
-    white-space: nowrap;
-    transition: all 0.2s ease;
-}
-
-.fab-option-item:hover {
-    background-color: #f8f9fa;
-    transform: translateX(5px);
-}
-
-/* Style cho các đường kẻ SVG */
-.fab-lines {
-    margin-right: 15px;
-}
-
-.fab-lines path {
-    stroke: #adb5bd;
-    stroke-width: 2;
-    fill: none;
-}
-
-.search-and-title { display: flex; justify-content: center; align-items: center; margin-bottom: 2.5rem; flex-wrap: wrap; gap: 1rem; }
-.search-form { display: flex; gap: 0.5rem; flex-grow: 1; }
-.pagination-controls { display: flex; justify-content: center; align-items: center; gap: 1rem; margin-top: 2.5rem; }
-.pagination-controls .btn { font-weight: 500; }
-.pagination-controls .page-info { font-weight: 500; color: #555; }
-.pagination-controls .btn[disabled] { background-color: #e9ecef; border-color: #e9ecef; color: #6c757d; pointer-events: none; }
-.edit-font-blah-blah {
-    font-family: 'Poppins', sans-serif;
-    font-weight: 200;
-}
-
-/* CSS cho Thư mục */
-.sidebar-nav-section { margin-top: 20px; }
-.sidebar-nav-section-title {
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: #6c757d;
-    text-transform: uppercase;
-    padding: 0 10px 10px 10px;
-    letter-spacing: 0.5px;
-}
-.folder-list a {
-    font-size: 0.85rem !important; /* Ghi đè chữ nhỏ */
-    height: 50px !important;
-    justify-content: flex-start !important;
-    padding-left: 15px !important;
-}
-.folder-list a i {
-    font-size: 1rem !important;
-    margin-bottom: 0 !important;
-    margin-right: 12px;
-    width: 20px; /* Căn chỉnh icon */
-}
-.folder-list a.active-folder {
-    background-color: #e0d6ff;
-    color: #5a189a;
-    font-weight: 600;
-}
-.create-folder-form {
-    display: flex;
-    gap: 0.5rem;
+    font-family: var(--font-display);
+    font-size: clamp(1.6rem, 4vw, 2.5rem);
+    font-weight: 700;
+    letter-spacing: 2px;
     margin-bottom: 2.5rem;
-    padding: 1rem;
-    background-color: rgba(255,255,255,0.3);
-    border-radius: 8px;
-}
-
-
-#search-results a {
-    display: block;
-    padding: 10px 15px;
-    color: #333;
-    text-decoration: none;
-    border-bottom: 1px solid #f0f0f0;
-}
-#search-results a:last-child { border-bottom: none; }
-#search-results a:hover { background-color: #f8f9fa; }
-.sidebar-nav a[data-bs-toggle="modal"] {
-    cursor: pointer;
-}
-
-/* === TÙY CHỈNH MODAL TẠO THƯ MỤC === */
-
-/* 1. Đặt modal-content làm gốc định vị */
-#createFolderModal .modal-content {
+    background: linear-gradient(135deg, var(--accent-purple), var(--accent-cyan), var(--accent-pink), var(--accent-purple));
+    background-size: 300% 300%;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: shimmer 4s ease-in-out infinite;
     position: relative;
-    overflow: hidden; 
 }
-
-/* 2. Định vị nút "x" (btn-close) */
-#createFolderModal .btn-close {
-    position: absolute;
-    top: 20px;   
-    right: 20px;  
-    z-index: 10;  
-}
-
-/* 3. Tùy chỉnh Header  */
-#createFolderModal .modal-header {
-    padding: 2rem 2rem 0.5rem 2rem; 
-}
-
-/* 4. Căn giữa tiêu đề "Tạo thư mục mới" */
-#createFolderModal .modal-title {
-    width: 100%;
-    text-align: center;
-    font-weight: 600; 
-}
-
-/* 5. Căn chỉnh Body (chứa label và input) */
-#createFolderModal .modal-body {
-    padding: 1rem 2rem;
-}
-
-/* 6. Đảm bảo label "Tên thư mục:" nằm ở lề trái */
-#createFolderModal .modal-body .form-label {
-    text-align: left; 
-    width: 100%;
-}
-
-/* 7. Tùy chỉnh Footer */
-#createFolderModal .modal-footer {
-    border-top: none;
-    padding: 0.5rem 2rem 0rem 0.5rem; 
-}
-
-/* Sử dụng lại grid của mindmap */
-.folder-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 24px;
-}
-
-.folder-card {
-    border-radius: 8px;
-    background-color: #ffffff;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    border: 1px solid #e9ecef;
-    transition: all 0.2s ease;
-    position: relative;
-    /* Đảm bảo chiều cao card đồng đều */
-    display: flex; 
-    flex-direction: column;
-}
-
-.folder-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 4px 10px rgba(0,0,0,0.08);
-    border-color: #0d6efd;
-}
-
-/* Link chính của card */
-.folder-card .card-link {
-    text-decoration: none;
-    color: inherit;
-    display: block;
-    flex-grow: 1; /* Đảm bảo link chiếm hết không gian */
-    padding: 16px;
-    display: flex;
-    flex-direction: column;
-    align-items: center; /* Căn giữa nội dung */
-    justify-content: center;
-}
-
-/* Icon thư mục lớn */
-.folder-card .folder-icon {
-    font-size: 4rem; 
-    color: #0d6efd; 
-    opacity: 0.8;
-    margin-bottom: 16px;
-}
-
-.folder-card .card-title {
-    font-weight: 600;
-    text-align: center; /* Tên thư mục căn giữa */
-    color: #343a40;
-}
-
-/* (Tùy chọn) Phần đếm số lượng mindmap */
-.folder-card .card-footer-stats {
-    border-top: 1px solid #e9ecef;
-    padding: 8px 16px;
-    font-size: 0.85rem;
-    color: #6c757d;
-    background-color: #f8f9fa;
-    border-bottom-left-radius: 8px;
-    border-bottom-right-radius: 8px;
-}
-
-.folder-page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between; /* đẩy 2 phần tử ra 2 đầu */
-  margin-bottom: 20px;
-  padding: 0 10px; /* tạo chút khoảng thở 2 bên */
-}
-
-.folder-page-title {
-  flex: 1;
-  text-align: center; /* đảm bảo tiêu đề nằm giữa vùng header */
-  font-family: 'Poppins', sans-serif;
-  font-size: 2.25rem;
-  font-weight: 700;
-  color: #343a40;
-  letter-spacing: 3px;
-}
-
-#btn-create-folder {
-    margin-bottom: 10px; /* bỏ margin cũ */
-    
-}
-
-/* Small adjustment to ensure title centers correctly even with the button */
-/* We give the button a sort of "placeholder" space on the left */
-.folder-page-header::before {
-    content: "";
-    width: auto; /* Match button width or use fixed value */
-    /* Estimate button width or measure it, e.g., 150px */
-    min-width: 150px; 
-    visibility: hidden; /* Make the placeholder invisible */
-    margin-right: 1rem; /* Match button margin */
-}
-
-/* Refine button width for the placeholder */
-#btn-create-folder {
-    min-width: 150px; /* Ensure button occupies the expected space */
-    text-align: center; /* Center text within button */
-}
-
-/* === STYLE CHO SỬA TÊN/XÓA FOLDER CARD === */
-
-/* Bọc link icon riêng */
-.folder-card .card-link {
-  padding: 16px 16px 0 16px; /* Chỉ padding trên */
-  text-align: center;
-}
-
-/* Căn giữa tên thư mục */
-.folder-card .card-title {
-  text-align: center;
-  padding: 8px 16px 16px 16px; /* Padding dưới nhiều hơn */
-  margin: 0;
-}
-
-/* Style cho tiêu đề hiển thị và link */
-.folder-card-title-display a {
-  text-decoration: none;
-  color: inherit;
-  transition: color 0.2s ease;
-}
-.folder-card-title-display a:hover {
-  color: #0d6efd;
-}
-
-/* Style cho khối sửa tên */
-.folder-card-title-edit {
-  padding: 8px 10px 10px 10px; /* Padding nhỏ hơn để input vừa */
-}
-.inline-edit-folder-form input.inline-edit-input {
-  width: 100%;
-  padding: 6px 8px;
-  border: 1px solid #ced4da;
-  border-radius: 4px;
-  font-size: 0.9rem;
-  text-align: center; /* Căn giữa chữ trong input */
-}
-.inline-edit-folder-form input.inline-edit-input:focus {
-  outline: none;
-  border-color: #86b7fe;
-  box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
-}
-
-/* Khối chứa nút hành động */
-.card-actions-folder {
-  position: absolute;
-  top: 8px; /* Đặt ở góc trên bên phải */
-  right: 8px;
-  display: flex;
-  gap: 8px;
-  opacity: 0; /* Mặc định ẩn */
-  transition: opacity 0.2s ease;
-}
-
-/* Hiện nút khi hover vào card */
-.folder-card:not(.is-editing):hover .card-actions-folder {
-  opacity: 1;
-}
-
-/* Style nút (dùng lại .btn-action từ mindmap card) */
-.card-actions-folder .btn-action {
-  width: 32px; /* Nhỏ hơn nút mindmap */
-  height: 32px;
-  font-size: 0.8rem;
-  background-color: rgba(255, 255, 255, 0.8);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-}
-.card-actions-folder .btn-action:hover {
-  background-color: #e9ecef;
-}
-.card-actions-folder .btn-delete-folder-permanent:hover {
-  background-color: #dc3545;
-  color: white;
-}
-.card-actions-folder .btn-edit-folder:hover {
-  background-color: #08aa10;
-  color: white;
-}
-
-/* === CINEMATIC EFFECTS === */
-
-/* Hiệu ứng morphing gradient cho sidebar */
-.dashboard-sidebar {
-    background: linear-gradient(-45deg, #f2f3ff, #ffd6ff, #e0c1f6, #d0e0ff);
-    background-size: 400% 400%;
-    animation: gradientShift 15s ease infinite;
-}
-
-@keyframes gradientShift {
-    0% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
-    100% { background-position: 0% 50%; }
-}
-
-/* Hiệu ứng background động tinh tế */
-.dashboard-content {
-    position: relative;
-    overflow: hidden;
-}
-
-.dashboard-content::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 0;
-    width: 100%; height: 100%;
-    background-image: 
-        radial-gradient(circle at 20% 80%, rgba(120, 119, 198, 0.1) 0%, transparent 50%),
-        radial-gradient(circle at 80% 20%, rgba(255, 119, 198, 0.08) 0%, transparent 50%),
-        radial-gradient(circle at 40% 40%, rgba(120, 219, 255, 0.05) 0%, transparent 50%);
-    animation: floatBackground 6s ease-in-out infinite;
-    pointer-events: none;
-    z-index: 0;
-}
-
-@keyframes floatBackground {
-    0%, 100% { transform: translateY(0px) scale(1); }
-    50% { transform: translateY(-10px) scale(1.02); }
-}
-
-/* Hiệu ứng glass morphism và 3D cho card */
-.mindmap-card {
-    background: rgba(255, 255, 255, 0.25);
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    border-radius: 16px;
-    box-shadow: 
-        0 8px 32px rgba(0, 0, 0, 0.1),
-        inset 0 1px 0 rgba(255, 255, 255, 0.2);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    position: relative;
-    overflow: hidden;
-}
-
-.mindmap-card::before {
-    content: '';
-    position: absolute;
-    top: 0; left: -100%;
-    width: 100%; height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
-    transition: left 0.5s;
-}
-
-.mindmap-card:hover::before {
-    left: 100%;
-}
-
-.mindmap-card:hover {
-    transform: 
-        translateY(-10px) 
-        rotateX(5deg) 
-        rotateY(-2deg);
-    box-shadow: 
-        0 20px 40px rgba(0, 0, 0, 0.15),
-        0 0 80px rgba(140, 82, 255, 0.1);
-}
-
-/* Hiệu ứng shimmer cho tiêu đề */
-
 
 .content-title::after {
     content: '|';
+    -webkit-text-fill-color: var(--accent-purple);
     animation: blink 1s infinite;
     margin-left: 5px;
 }
@@ -923,79 +315,746 @@
     51%, 100% { opacity: 0; }
 }
 
-/* Hiệu ứng floating cho nút tạo mới */
+
+/* ============================================================
+   MINDMAP CARDS — DARK GLASSMORPHISM
+   ============================================================ */
+.mindmap-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 24px;
+}
+
+.mindmap-card {
+    position: relative;
+    overflow: hidden;
+    background: var(--bg-glass);
+    backdrop-filter: blur(12px) saturate(150%);
+    -webkit-backdrop-filter: blur(12px) saturate(150%);
+    border: 1px solid var(--border-glass);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-card);
+    transition: all 0.4s var(--transition-smooth);
+    /* Staggered entrance */
+    opacity: 0;
+    animation: cardSlideUp 0.55s var(--transition-smooth) forwards;
+}
+
+/* Staggered delays */
+.mindmap-card:nth-child(1)  { animation-delay: 0.05s; }
+.mindmap-card:nth-child(2)  { animation-delay: 0.10s; }
+.mindmap-card:nth-child(3)  { animation-delay: 0.15s; }
+.mindmap-card:nth-child(4)  { animation-delay: 0.20s; }
+.mindmap-card:nth-child(5)  { animation-delay: 0.25s; }
+.mindmap-card:nth-child(6)  { animation-delay: 0.30s; }
+.mindmap-card:nth-child(7)  { animation-delay: 0.35s; }
+.mindmap-card:nth-child(8)  { animation-delay: 0.40s; }
+.mindmap-card:nth-child(9)  { animation-delay: 0.45s; }
+.mindmap-card:nth-child(10) { animation-delay: 0.50s; }
+.mindmap-card:nth-child(11) { animation-delay: 0.55s; }
+.mindmap-card:nth-child(12) { animation-delay: 0.60s; }
+.mindmap-card:nth-child(n+13) { animation-delay: 0.65s; }
+
+@keyframes cardSlideUp {
+    from { opacity: 0; transform: translateY(40px) scale(0.96); }
+    to   { opacity: 1; transform: translateY(0)   scale(1); }
+}
+
+/* Shimmer sweep on hover */
+.mindmap-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%;
+    width: 100%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+    transition: left 0.6s;
+    z-index: 1;
+}
+
+.mindmap-card:hover::before {
+    left: 100%;
+}
+
+/* Hover — 3D lift */
+.mindmap-card:hover {
+    transform: translateY(-8px);
+    border-color: var(--border-glass-hover);
+    box-shadow: var(--shadow-card-hover);
+}
+
+/* Preview area */
+.mindmap-card .preview-image {
+    aspect-ratio: 4 / 3;
+    background-color: rgba(255, 255, 255, 0.03);
+    border-bottom: 1px solid var(--border-glass);
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+
+/* Card title */
+.mindmap-card .card-title {
+    padding: 16px;
+    font-weight: 600;
+    font-family: var(--font-body);
+    color: var(--text-primary);
+}
+
+/* Card link */
+.mindmap-card .card-link {
+    text-decoration: none;
+    color: inherit;
+    display: block;
+}
+
+.card-title-display a {
+    text-decoration: none;
+    color: var(--text-primary);
+    transition: color 0.2s ease;
+}
+
+.card-title-display a:hover {
+    color: var(--accent-cyan);
+}
+
+
+/* ============================================================
+   CARD ACTIONS (hover reveal)
+   ============================================================ */
+.card-actions {
+    position: absolute;
+    bottom: 0; left: 0;
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    padding: 16px;
+    background: linear-gradient(to top, rgba(0,0,0,0.7), transparent);
+    border-bottom-left-radius: var(--radius-md);
+    border-bottom-right-radius: var(--radius-md);
+    opacity: 0;
+    transform: translateY(10px);
+    transition: all 0.25s var(--transition-smooth);
+    z-index: 2;
+}
+
+.mindmap-card:not(.is-editing):hover .card-actions {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.btn-action {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(8px);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.2s var(--transition-smooth);
+}
+
+.btn-action:hover {
+    background-color: var(--accent-purple);
+    transform: scale(1.1);
+    color: white;
+}
+
+.btn-action.btn-delete:hover {
+    background-color: #dc3545;
+    color: white;
+}
+
+.btn-action.btn-move:hover {
+    background-color: var(--accent-blue);
+    color: white;
+}
+
+
+/* ============================================================
+   EMPTY STATE
+   ============================================================ */
+.empty-dashboard-container {
+    margin-top: 60px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100%;
+    text-align: center;
+}
+
+.empty-title {
+    text-align: center;
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: 2px;
+    margin-bottom: 0.5rem;
+}
+
+.sub-empty-title {
+    font-size: 1.1rem;
+    font-weight: 400;
+    color: var(--text-secondary);
+    margin-top: 0.5rem;
+}
+
+.bi.bi-folder-x.blank-folder {
+    font-size: 11rem;
+    color: var(--accent-purple);
+    margin-bottom: 2rem;
+    opacity: 0.5;
+}
+
+.material-symbols-outlined.blank_folder {
+    margin-top: 20px;
+    font-size: 15rem;
+    color: var(--accent-purple);
+    margin-bottom: 2rem;
+    opacity: 0.5;
+}
+
+.search-and-title {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 2.5rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+
+/* ============================================================
+   FLOATING ACTION BUTTON (FAB)
+   ============================================================ */
 .create-new-container {
+    position: fixed;
+    bottom: 30px;
+    left: 15px;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    flex-direction: row-reverse;
     animation: float 3s ease-in-out infinite;
 }
 
 @keyframes float {
     0%, 100% { transform: translateY(0px); }
-    50% { transform: translateY(-10px); }
+    50% { transform: translateY(-8px); }
 }
 
-/* Hiệu ứng fade in khi load trang */
-.dashboard-content {
+.main-fab-btn {
+    width: 60px; height: 60px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent-purple), var(--accent-blue));
+    color: white;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    box-shadow: 0 4px 20px rgba(140, 82, 255, 0.4), 0 0 40px rgba(140, 82, 255, 0.15);
+    cursor: pointer;
+    transition: all 0.3s var(--transition-smooth);
+    z-index: 10;
+}
+
+.main-fab-btn:hover {
+    box-shadow: 0 8px 30px rgba(140, 82, 255, 0.6), 0 0 60px rgba(140, 82, 255, 0.2);
+    transform: scale(1.05);
+}
+
+.main-fab-btn i {
+    transition: transform 0.4s var(--transition-smooth);
+}
+
+.create-new-container:hover .main-fab-btn i {
+    transform: rotate(225deg);
+}
+
+.fab-options {
+    display: flex;
+    align-items: center;
+    margin-left: 15px;
     opacity: 0;
-    animation: fadeInUp 1s ease-out 0.5s forwards;
+    visibility: hidden;
+    transform: scale(0.9) translateX(-20px);
+    transition: all 0.3s var(--transition-smooth);
 }
 
-@keyframes fadeInUp {
-    from {
-        opacity: 0;
-        transform: translateY(30px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+.create-new-container:hover .fab-options {
+    opacity: 1;
+    visibility: visible;
+    transform: scale(1) translateX(0);
+}
+
+.fab-options-list {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.fab-option-item {
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(12px);
+    padding: 10px 20px;
+    border-radius: 24px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.08);
+    color: var(--text-primary);
+    font-weight: 500;
+    font-size: 0.9rem;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: all 0.2s ease;
+    border: 1px solid var(--border-glass);
+}
+
+.fab-option-item:hover {
+    background: rgba(140, 82, 255, 0.2);
+    border-color: rgba(140, 82, 255, 0.3);
+    transform: translateX(5px);
+    color: white;
+}
+
+.fab-lines { margin-right: 15px; }
+.fab-lines path { stroke: var(--text-muted); stroke-width: 2; fill: none; }
+
+
+/* ============================================================
+   PAGINATION
+   ============================================================ */
+.pagination-controls {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 2.5rem;
+}
+
+.pagination-controls .btn {
+    font-weight: 500;
+    color: var(--text-primary);
+    background: var(--bg-glass);
+    border: 1px solid var(--border-glass);
+    backdrop-filter: blur(8px);
+}
+
+.pagination-controls .btn:hover {
+    background: var(--bg-glass-hover);
+    border-color: var(--border-glass-hover);
+}
+
+.pagination-controls .page-info {
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+.pagination-controls .btn[disabled] {
+    background: rgba(255,255,255,0.02);
+    border-color: var(--border-glass);
+    color: var(--text-muted);
+    pointer-events: none;
+}
+
+.edit-font-blah-blah {
+    font-family: var(--font-body);
+    font-weight: 400;
 }
 
 
-/* Đảm bảo cursor không bị ẩn bởi các element khác */
-
-
-/* Hiển thị cursor mặc định trên mobile */
-@media (max-width: 768px) {
-    body {
-        cursor: auto !important;
-    }
-    body * {
-        cursor: auto !important;
-    }
-}
-
-
-
-/* Đảm bảo nội dung nằm trên background */
-.dashboard-content > * {
+/* ============================================================
+   TRASH PAGE STYLES
+   ============================================================ */
+.content-header-trash {
+    display: flex;
+    align-items: center;
+    margin-bottom: 1.5rem;
     position: relative;
-    z-index: 1;
-}
-.modal-backdrop.show {
-  opacity: 0.5 !important;
-  z-index: 1040 !important;
+    justify-content: center;
 }
 
-#moveFolderModal {
-  z-index: 1055 !important;
+.content-title-trash {
+    margin-bottom: 2rem;
+    text-align: center;
+    font-family: var(--font-display);
+    font-size: clamp(1.6rem, 4vw, 2.5rem);
+    font-weight: 700;
+    letter-spacing: 2px;
+    background: linear-gradient(135deg, var(--accent-purple), var(--accent-cyan), var(--accent-pink));
+    background-size: 300% 300%;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: shimmer 4s ease-in-out infinite;
+    position: relative;
 }
-.modal {
-  z-index: 1050 !important;
+
+#btn-empty-trash {
+    background: linear-gradient(135deg, #dc3545, #c82333);
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-weight: 500;
+    position: absolute;
+    right: 0;
+    transition: all 0.2s;
 }
-.modal-backdrop.show {
-  z-index: 1040 !important;
+
+#btn-empty-trash:hover {
+    box-shadow: 0 4px 16px rgba(220, 53, 69, 0.4);
+    transform: translateY(-2px);
+}
+
+.btn-delete-permanent-trash { color: var(--text-secondary); }
+.btn-delete-permanent-trash:hover { color: #ffffff; background-color: #c82333; }
+
+/* Trash card actions */
+.trash-card-actions {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 3;
+    opacity: 0;
+    transition: all 0.25s ease;
+}
+
+.mindmap-card:hover .card-footer,
+.mindmap-card:hover .trash-card-actions { opacity: 1; }
+
+.btn-action.btn-recover:hover {
+    background-color: var(--accent-blue);
+    color: white;
+}
+
+.mindmap-card .card-footer {
+    position: absolute;
+    bottom: 0; left: 0;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(10, 10, 26, 0.8);
+    backdrop-filter: blur(6px);
+    border-top: 1px solid var(--border-glass);
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    padding: 10px 16px;
+    opacity: 0;
+    transition: all 0.25s ease;
+    z-index: 2;
+}
+
+/* Empty trash */
+.empty-trash-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    text-align: center;
+    color: var(--text-secondary);
+}
+
+.empty-trash-container .empty-icon {
+    font-size: 6rem;
+    color: var(--accent-purple);
+    margin-bottom: 2rem;
+    opacity: 0.5;
+}
+
+.empty-trash-container .empty-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+}
+
+.empty-trash-container .empty-text { max-width: 400px; }
+
+
+/* ============================================================
+   FOLDER STYLES
+   ============================================================ */
+.sidebar-nav-section { margin-top: 20px; }
+
+.sidebar-nav-section-title {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    padding: 0 10px 10px 10px;
+    letter-spacing: 0.5px;
+}
+
+.folder-list a {
+    font-size: 0.85rem !important;
+    height: 50px !important;
+    justify-content: flex-start !important;
+    padding-left: 15px !important;
+}
+
+.folder-list a i {
+    font-size: 1rem !important;
+    margin-bottom: 0 !important;
+    margin-right: 12px;
+    width: 20px;
+}
+
+.folder-list a.active-folder {
+    background-color: rgba(140, 82, 255, 0.15);
+    color: var(--accent-purple);
+    font-weight: 600;
+}
+
+.create-folder-form {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 2.5rem;
+    padding: 1rem;
+    background-color: var(--bg-glass);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-glass);
 }
 
 
-/* ------------------ phần preview ảnh ----------------------- */
+/* ============================================================
+   FOLDER CARDS
+   ============================================================ */
+.folder-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 24px;
+}
+
+.folder-card {
+    border-radius: var(--radius-md);
+    background: var(--bg-glass);
+    backdrop-filter: blur(12px);
+    box-shadow: var(--shadow-card);
+    border: 1px solid var(--border-glass);
+    transition: all 0.3s var(--transition-smooth);
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+.folder-card:hover {
+    transform: translateY(-6px);
+    box-shadow: var(--shadow-card-hover);
+    border-color: var(--border-glass-hover);
+}
+
+.folder-card .card-link {
+    text-decoration: none;
+    color: inherit;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 16px 16px 0 16px;
+    flex-grow: 1;
+}
+
+.folder-card .folder-icon {
+    font-size: 4rem;
+    color: var(--accent-blue);
+    opacity: 0.7;
+    margin-bottom: 16px;
+}
+
+.folder-card .card-title {
+    font-weight: 600;
+    text-align: center;
+    color: var(--text-primary);
+    padding: 8px 16px 16px 16px;
+    margin: 0;
+}
+
+.folder-card .card-footer-stats {
+    border-top: 1px solid var(--border-glass);
+    padding: 8px 16px;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    background: rgba(255,255,255,0.02);
+    border-bottom-left-radius: var(--radius-md);
+    border-bottom-right-radius: var(--radius-md);
+}
+
+.folder-page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+    padding: 0 10px;
+}
+
+.folder-page-title {
+    flex: 1;
+    text-align: center;
+    font-family: var(--font-display);
+    font-size: clamp(1.6rem, 4vw, 2.5rem);
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: 2px;
+}
+
+#btn-create-folder { margin-bottom: 10px; min-width: 150px; text-align: center; }
+
+.folder-page-header::before {
+    content: "";
+    min-width: 150px;
+    visibility: hidden;
+    margin-right: 1rem;
+}
+
+/* Folder card title */
+.folder-card-title-display a {
+    text-decoration: none;
+    color: var(--text-primary);
+    transition: color 0.2s ease;
+}
+.folder-card-title-display a:hover { color: var(--accent-cyan); }
+
+.folder-card-title-edit { padding: 8px 10px 10px 10px; }
+
+.inline-edit-folder-form input.inline-edit-input {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid var(--border-glass-hover);
+    border-radius: 4px;
+    font-size: 0.9rem;
+    text-align: center;
+    background: rgba(255,255,255,0.08);
+    color: var(--text-primary);
+}
+.inline-edit-folder-form input.inline-edit-input:focus {
+    outline: none;
+    border-color: var(--accent-purple);
+    box-shadow: 0 0 0 0.25rem rgba(140, 82, 255, 0.25);
+}
+
+/* Folder card actions */
+.card-actions-folder {
+    position: absolute;
+    top: 8px; right: 8px;
+    display: flex;
+    gap: 8px;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.folder-card:not(.is-editing):hover .card-actions-folder { opacity: 1; }
+
+.card-actions-folder .btn-action {
+    width: 32px; height: 32px;
+    font-size: 0.8rem;
+    background: rgba(255,255,255,0.1);
+    backdrop-filter: blur(8px);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.card-actions-folder .btn-action:hover { background: var(--bg-glass-hover); }
+.card-actions-folder .btn-delete-folder-permanent:hover { background-color: #dc3545; color: white; }
+.card-actions-folder .btn-edit-folder:hover { background-color: #08aa10; color: white; }
+
+
+/* ============================================================
+   SEARCH RESULTS (on dashboard)
+   ============================================================ */
+#search-results a {
+    display: block;
+    padding: 10px 15px;
+    color: #333;
+    text-decoration: none;
+    border-bottom: 1px solid #f0f0f0;
+}
+#search-results a:last-child { border-bottom: none; }
+#search-results a:hover { background-color: #f8f9fa; }
+
+.sidebar-nav a[data-bs-toggle="modal"] { cursor: pointer; }
+
+
+/* ============================================================
+   CREATE FOLDER MODAL
+   ============================================================ */
+#createFolderModal .modal-content {
+    position: relative;
+    overflow: hidden;
+    background: rgba(20, 15, 40, 0.95);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--border-glass);
+    color: var(--text-primary);
+}
+
+#createFolderModal .btn-close {
+    position: absolute;
+    top: 20px; right: 20px;
+    z-index: 10;
+    filter: invert(1);
+}
+
+#createFolderModal .modal-header { padding: 2rem 2rem 0.5rem 2rem; border-bottom: none; }
+#createFolderModal .modal-title { width: 100%; text-align: center; font-weight: 600; }
+#createFolderModal .modal-body { padding: 1rem 2rem; }
+#createFolderModal .modal-body .form-label { text-align: left; width: 100%; color: var(--text-secondary); }
+#createFolderModal .modal-body .form-control {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid var(--border-glass-hover);
+    color: var(--text-primary);
+}
+#createFolderModal .modal-footer { border-top: none; padding: 0.5rem 2rem 1.5rem 0.5rem; }
+
+
+/* ============================================================
+   MOVE FOLDER MODAL
+   ============================================================ */
+.modal-backdrop.show { opacity: 0.5 !important; z-index: 1040 !important; }
+#moveFolderModal { z-index: 1055 !important; }
+.modal { z-index: 1050 !important; }
+
+#moveFolderModal .modal-content {
+    background: rgba(20, 15, 40, 0.95);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--border-glass);
+    color: var(--text-primary);
+}
+
+#moveFolderModal .list-group-item {
+    background: var(--bg-glass);
+    border-color: var(--border-glass);
+    color: var(--text-primary);
+}
+
+#moveFolderModal .list-group-item:hover {
+    background: var(--bg-glass-hover);
+}
+
+#moveFolderModal .list-group-item-primary {
+    background: rgba(140, 82, 255, 0.15);
+    border-color: rgba(140, 82, 255, 0.2);
+    color: var(--accent-purple);
+}
+
+
+/* ============================================================
+   MINDMAP PREVIEW (thumbnail area)
+   ============================================================ */
 .mindmap-thumbnail {
     width: 100%;
-    height: 120px; /* Chiều cao cố định cho thumbnail */
-    object-fit: cover; /* Đảm bảo ảnh không bị méo khi co giãn */
-    border-bottom: 1px solid #eee; /* Đường kẻ dưới ảnh */
-    margin-bottom: 10px; /* Khoảng cách với tiêu đề */
-    border-radius: 8px 8px 0 0; /* Bo tròn góc trên của ảnh (nếu card có bo tròn) */
-    background-color: #f8f9fa; /* Màu nền khi ảnh chưa tải/lỗi */
+    height: 120px;
+    object-fit: cover;
+    border-bottom: 1px solid var(--border-glass);
+    margin-bottom: 10px;
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+    background-color: rgba(255,255,255,0.03);
 }
 
 .mindmap-card .mindmap-thumbnail,
@@ -1004,21 +1063,18 @@
     height: auto;
     aspect-ratio: 4 / 3;
     margin-bottom: 0;
-    border-radius: 8px 8px 0 0;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+    border-bottom: 1px solid var(--border-glass);
     overflow: hidden;
 }
 
 .mindmap-card .mindmap-thumbnail {
     display: block;
     object-fit: contain;
-    background:
-        linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(238, 247, 255, 0.92));
+    background: linear-gradient(135deg, rgba(15, 12, 30, 0.95), rgba(20, 18, 40, 0.92));
 }
 
-.mindmap-card .mindmap-thumbnail + .preview-image {
-    display: none;
-}
+.mindmap-card .mindmap-thumbnail + .preview-image { display: none; }
 
 .mindmap-preview {
     position: relative;
@@ -1026,44 +1082,35 @@
     align-items: center;
     justify-content: center;
     background:
-        linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(238, 247, 255, 0.92)),
-        radial-gradient(circle at 20% 20%, rgba(92, 225, 230, 0.22), transparent 36%),
-        radial-gradient(circle at 85% 75%, rgba(255, 102, 196, 0.18), transparent 34%);
+        linear-gradient(135deg, rgba(15, 12, 30, 0.95), rgba(20, 18, 40, 0.9)),
+        radial-gradient(circle at 20% 20%, rgba(92, 225, 230, 0.12), transparent 36%),
+        radial-gradient(circle at 85% 75%, rgba(255, 102, 196, 0.1), transparent 34%);
 }
 
-.mindmap-preview svg {
-    width: 100%;
-    height: 100%;
-    display: block;
-}
-
-.mindmap-preview-surface {
-    fill: rgba(255, 255, 255, 0.2);
-}
+.mindmap-preview svg { width: 100%; height: 100%; display: block; }
+.mindmap-preview-surface { fill: rgba(255, 255, 255, 0.03); }
 
 .mindmap-preview-link {
     fill: none;
-    stroke: rgba(78, 93, 120, 0.42);
+    stroke: rgba(140, 82, 255, 0.35);
     stroke-width: 2.5;
     stroke-linecap: round;
 }
 
 .mindmap-preview-node rect {
     stroke-width: 2;
-    filter: drop-shadow(0 3px 5px rgba(34, 41, 57, 0.12));
+    filter: drop-shadow(0 3px 8px rgba(0, 0, 0, 0.3));
 }
 
 .mindmap-preview-node text {
-    fill: #20242c;
-    font-family: 'Poppins', Arial, sans-serif;
+    fill: var(--text-primary);
+    font-family: var(--font-body);
     font-size: 9px;
     font-weight: 700;
     pointer-events: none;
 }
 
-.mindmap-preview-node.level-1 text {
-    font-size: 10px;
-}
+.mindmap-preview-node.level-1 text { font-size: 10px; }
 
 .mindmap-preview-empty-content {
     display: flex;
@@ -1071,14 +1118,37 @@
     align-items: center;
     justify-content: center;
     gap: 8px;
-    color: #6c757d;
+    color: var(--text-secondary);
     font-size: 0.82rem;
     font-weight: 600;
 }
 
 .mindmap-preview-empty-content i {
-    color: #8c52ff;
+    color: var(--accent-purple);
     font-size: 1.6rem;
-    opacity: 0.75;
+    opacity: 0.5;
 }
 
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+@media (max-width: 768px) {
+    body { cursor: auto !important; }
+    body * { cursor: auto !important; }
+
+    .dashboard-sidebar { width: 60px; padding: 8px; }
+    .dashboard-content { margin-left: 60px; padding: 16px; }
+    .sidebar-nav a span { display: none; }
+    .sidebar-nav a { height: 56px; }
+    .mindmap-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; }
+    .aurora-blob { filter: blur(80px); opacity: 0.3; }
+}
+
+.search-form { display: flex; gap: 0.5rem; flex-grow: 1; }
+
+/* Helper text styles */
+.fab-helper-arrow { position: fixed; bottom: 90px; left: 110px; }
+.helper-arrow { position: absolute; bottom: -15px; left: -20px; stroke: var(--text-muted); }
+.helper-text { margin: 0; font-style: italic; color: var(--text-muted); max-width: 250px; }
+.fab-helper-text { position: fixed; bottom: 130px; left: 180px; }

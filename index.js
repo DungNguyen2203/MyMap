@@ -121,6 +121,8 @@ async function startServer() {
 
     // === ƯU TIÊN 1: Đăng ký các API Routes và Pug Routes (dashboard, profile...) ===
     // Express sẽ kiểm tra các route này trước tiên
+    const adminRoutes = require('./routes/adminRoutes.js');
+    app.use('/admin', adminRoutes);
     app.use('/friends', friendRoutes(usersDb));
     app.use('/dashboard', dashboardRoutes); // Xử lý các route bắt đầu bằng /dashboard
     app.use('/profile', profileRoutes);

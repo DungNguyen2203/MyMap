@@ -27,6 +27,11 @@ router.post('/forgot-password', authMiddleware.bypassLogin, authController.postF
 router.get('/reset-password/:token', authMiddleware.bypassLogin, authController.getResetPasswordPage);
 router.post('/reset-password/:token', authMiddleware.bypassLogin, authController.postResetPassword);
 
+// === ROUTE TÀI KHOẢN BỊ KHÓA ===
+router.get('/account-locked', authMiddleware.checkLoggedIn, (req, res) => {
+    res.render('account-locked', { pageTitle: 'Tài khoản bị khóa' });
+});
+
 // === ROUTE ĐĂNG XUẤT ===
 router.get('/logout', authMiddleware.checkLoggedIn, authController.logout);
 // Thêm route cho trang about

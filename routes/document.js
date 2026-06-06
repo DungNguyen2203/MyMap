@@ -14,13 +14,21 @@ const authMiddleware = require('../middlewares/middlewares.js');
 const documentController = require('../controllers/documentController.js');
 
 const OCRSPACE_API_KEY = process.env.OCRSPACE_API_KEY;
-const GEMINI_KEYS = (process.env.GEMINI_API_KEYS || '').split(',').map(k => k.trim()).filter(Boolean);
+const GEMINI_KEYS = (process.env.GEMINI_API_KEYS || process.env.GEMINI_API_KEY || '')
+  .split(',')
+  .map(k => k.trim())
+  .filter(k => k && k.startsWith('AIzaSy'));
 const HUGGINGFACE_TOKEN = process.env.HUGGINGFACE_TOKEN;
 const CHUNK_SIZE = parseInt(process.env.CHUNK_SIZE || '8000', 10);
 const CHUNK_WORD_LIMIT = parseInt(process.env.CHUNK_WORD_LIMIT || '0', 10);
 const CHUNK_PROCESSING_MODE = (process.env.CHUNK_PROCESSING_MODE || 'parallel').toLowerCase();
 const CHUNK_CONCURRENCY = parseInt(process.env.CHUNK_CONCURRENCY || '3', 10);
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+
+// Cấu hình Hàng đợi gọi AI toàn server
+const GLOBAL_AI_CONCURRENCY = parseInt(process.env.GLOBAL_AI_CONCURRENCY || '3', 10);
+const GLOBAL_AI_MIN_INTERVAL = parseInt(process.env.GLOBAL_AI_MIN_INTERVAL || '1000', 10);
+
 if (!OCRSPACE_API_KEY) console.warn("⚠️ OCRSPACE_API_KEY not set in .env — OCR.Space calls will fail.");
 if (GEMINI_KEYS.length === 0) console.warn("⚠️ GEMINI_API_KEYS not set.");
 if (!HUGGINGFACE_TOKEN) console.warn("⚠️ HUGGINGFACE_TOKEN not set in .env — Hugging Face calls will fail.");
@@ -38,19 +46,89 @@ const keyManager = {
     return k;
   }
 };
+
+// ========== LỚP QUẢN LÝ HÀNG ĐỢI VÀ GIỚI HẠN TẦN SUẤT API TOÀN CỤC ==========
+class AIApiQueue {
+  constructor(concurrencyLimit = 3, minIntervalMs = 1000) {
+    this.concurrencyLimit = concurrencyLimit;
+    this.minIntervalMs = minIntervalMs;
+    this.queue = [];
+    this.activeCount = 0;
+    this.lastRequestTime = 0;
+    this.timeoutActive = false;
+  }
+
+  // Cho phép đẩy 1 tác vụ bất đồng bộ vào hàng đợi
+  enqueue(asyncFn) {
+    return new Promise((resolve, reject) => {
+      this.queue.push({ asyncFn, resolve, reject });
+      this.processNext();
+    });
+  }
+
+  // Điều phối và thực thi các tác vụ trong hàng đợi
+  processNext() {
+    if (this.activeCount >= this.concurrencyLimit || this.queue.length === 0) {
+      return;
+    }
+
+    const now = Date.now();
+    const timeSinceLast = now - this.lastRequestTime;
+
+    // Đảm bảo giãn cách tối thiểu giữa các cuộc gọi API để tránh lỗi Rate Limit 429
+    if (timeSinceLast < this.minIntervalMs) {
+      const waitTime = this.minIntervalMs - timeSinceLast;
+      if (!this.timeoutActive) {
+        this.timeoutActive = true;
+        setTimeout(() => {
+          this.timeoutActive = false;
+          this.processNext();
+        }, waitTime);
+      }
+      return;
+    }
+
+    const task = this.queue.shift();
+    this.activeCount++;
+    this.lastRequestTime = Date.now();
+
+    // Tiếp tục kiểm tra và khởi chạy các task khác song song trong hạn mức concurrency
+    this.processNext();
+
+    console.log(`[AIApiQueue] Chạy cuộc gọi API mới. Active count: ${this.activeCount}/${this.concurrencyLimit}, Đang chờ: ${this.queue.length}`);
+
+    task.asyncFn()
+      .then(result => task.resolve(result))
+      .catch(err => task.reject(err))
+      .finally(() => {
+        this.activeCount--;
+        console.log(`[AIApiQueue] Hoàn thành cuộc gọi API. Active count: ${this.activeCount}/${this.concurrencyLimit}`);
+        // Chờ thêm khoảng minIntervalMs trước khi kích hoạt task tiếp theo
+        setTimeout(() => this.processNext(), this.minIntervalMs);
+      });
+  }
+}
+
+// Khởi tạo thực thể hàng đợi toàn cục
+const globalAIQueue = new AIApiQueue(GLOBAL_AI_CONCURRENCY, GLOBAL_AI_MIN_INTERVAL);
+
+// Hàm wrapper để đồng bộ tất cả yêu cầu gọi AI qua hàng đợi
+function generateWithRetryQueued(prompt, maxRetries = 3) {
+  return globalAIQueue.enqueue(() => generateWithRetry(prompt, maxRetries));
+}
 // ========== OPENROUTER FREE MODELS - OPTIMIZED ==========
 async function generateWithOpenRouter(prompt) {
     if (!OPENROUTER_API_KEY) {
         throw new Error("OPENROUTER_API_KEY not configured");
     }
 
-    // DANH SÁCH MODEL FREE TỐT NHẤT
+    // DANH SÁCH MODEL FREE TỐT NHẤT & KHẢ DỤNG TRÊN OPENROUTER
     const models = [
-        "google/gemini-2.0-flash-lite-preview-02-05:free", // Gemini free
-        "anthropic/claude-3-haiku:free", // Claude free - rất ổn định
-        "meta-llama/llama-3-8b-instruct:free", // Llama free
-        "microsoft/wizardlm-2-8x22b:free", // WizardLM free
-        "qwen/qwen-2.5-72b-instruct:free" // Qwen mạnh
+        "openrouter/free", // Thử auto-router trước để luôn tìm được model free khả dụng!
+        "google/gemini-2.0-flash-lite-preview:free",
+        "google/gemini-2.0-pro-exp-02-05:free",
+        "qwen/qwen-2.5-72b-instruct:free",
+        "deepseek/deepseek-chat:free"
     ];
 
     for (const model of models) {
@@ -83,7 +161,10 @@ YÊU CẦU: Luôn trả về JSON hợp lệ, bắt đầu bằng { và kết th
                 timeout: 45000
             });
 
-            const content = response.data.choices[0].message.content;
+            const content = response.data?.choices?.[0]?.message?.content;
+            if (!content) {
+                throw new Error("Empty response from OpenRouter");
+            }
             console.log(`✓ OpenRouter success with ${model}`);
             
             return { 
@@ -158,8 +239,16 @@ NHẮC LẠI: CHỈ TRẢ VỀ JSON, KHÔNG GIẢI THÍCH, KHÔNG MARKDOWN.`;
                 throw new Error(response.data.error);
             }
 
+            const generatedText = Array.isArray(response.data)
+                ? response.data[0]?.generated_text
+                : response.data?.generated_text;
+
+            if (!generatedText) {
+                throw new Error("Empty response from Hugging Face");
+            }
+
             console.log(`✓ Hugging Face success with ${model}`);
-            return { generated_text: response.data[0]?.generated_text || "" };
+            return { generated_text: generatedText };
 
         } catch (error) {
             console.warn(`❌ Hugging Face ${model} failed:`, error.message);
@@ -177,12 +266,14 @@ NHẮC LẠI: CHỈ TRẢ VỀ JSON, KHÔNG GIẢI THÍCH, KHÔNG MARKDOWN.`;
 async function generateWithRetry(prompt, maxRetries = 3) {
     let lastError = null;
 
-    // 1. Ưu tiên Gemini trước (nếu có key)
+    // 1. Ưu tiên Gemini trước (nếu có key hợp lệ)
     if (keyManager.keys && keyManager.keys.length > 0) {
         const models = ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"];
         
         for (let attempt = 0; attempt < maxRetries; attempt++) {
             const key = keyManager.next();
+            if (!key) continue;
+
             const selectedModel = models[attempt % models.length];
 
             try {
@@ -206,8 +297,13 @@ async function generateWithRetry(prompt, maxRetries = 3) {
             } catch (error) {
                 lastError = error;
                 console.warn(`❌ Gemini ${selectedModel} failed:`, error.message);
+                
+                // Nếu dính lỗi Quota / Rate limit (429), chờ lâu hơn với exponential backoff
+                const isRateLimit = error.message.includes('429') || error.message.includes('Quota');
                 if (attempt < maxRetries - 1) {
-                    await new Promise(resolve => setTimeout(resolve, 800));
+                    const delay = isRateLimit ? 3000 * Math.pow(2, attempt) : 1000;
+                    console.log(`⏳ Waiting ${delay}ms before next retry...`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
                 }
             }
         }
@@ -222,22 +318,24 @@ async function generateWithRetry(prompt, maxRetries = 3) {
         console.warn("OpenRouter fallback failed:", error.message);
     }
 
-    // 3. Cuối cùng dùng Hugging Face (luôn available)
-    try {
-        console.log("🔄 Falling back to Hugging Face...");
-        const hfResult = await generateWithHuggingFace(prompt);
-        return { 
-            response: {
-                candidates: [{
-                    content: {
-                        parts: [{ text: hfResult.generated_text }]
-                    }
-                }]
-            }
-        };
-    } catch (error) {
-        lastError = error;
-        console.warn("Hugging Face fallback failed:", error.message);
+    // 3. Cuối cùng dùng Hugging Face (nếu có token)
+    if (HUGGINGFACE_TOKEN) {
+        try {
+            console.log("🔄 Falling back to Hugging Face...");
+            const hfResult = await generateWithHuggingFace(prompt);
+            return { 
+                response: {
+                    candidates: [{
+                        content: {
+                            parts: [{ text: hfResult.generated_text }]
+                        }
+                    }]
+                }
+            };
+        } catch (error) {
+            lastError = error;
+            console.warn("Hugging Face fallback failed:", error.message);
+        }
     }
 
     throw new Error(`All AI services failed: ${lastError?.message || 'Unknown error'}`);
@@ -544,7 +642,7 @@ YÊU CẦU:
     try {
       console.log(`Attempt ${attempt + 1} for chunk ${chunkIndex + 1}`);
 
-      const result = await generateWithRetry(prompt);
+      const result = await generateWithRetryQueued(prompt);
       const rawText = result?.response?.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
       if (!rawText) {
@@ -829,13 +927,27 @@ function findJobIdByResponse(res) {
 // ========== ROUTES ==========
 router.get('/page', authMiddleware.checkLoggedIn, documentController.getUploadPage);
 
-router.post('/start-summarize', authMiddleware.checkLoggedIn, upload.single('documentFile'), (req, res, next) => { 
+router.post('/start-summarize', authMiddleware.checkLoggedIn, upload.single('documentFile'), async (req, res, next) => { 
   if (!req.file) { 
     console.log("Upload failed: No file received."); 
     return res.status(400).json({ error: 'Không có file nào được tải lên.' }); 
   } 
   console.log(`Received file: ${req.file.originalname}, Type: ${req.file.mimetype}, Size: ${req.file.size}`); 
   const jobId = uuidv4(); 
+  
+  // Lưu thông tin file vào database phục vụ Kiểm duyệt tài liệu cho Admin
+  const docRecord = {
+    title: req.file.originalname,
+    fileType: req.file.mimetype,
+    size: req.file.size,
+    userId: req.session.user._id.toString(),
+    username: req.session.user.username || 'unknown',
+    createdAt: new Date(),
+    status: 'active'
+  };
+  const db = req.app.locals.usersDb;
+  db.collection('documents').insertOne(docRecord).catch(e => console.error("❌ Lỗi lưu tài liệu vào DB:", e));
+
   jobs.set(jobId, { 
     id: jobId, 
     status: 'pending', 
@@ -1217,8 +1329,7 @@ function generateMindmapHTML(markdownContent, title = "Mindmap Visualization") {
             
             // Kiểm tra thư viện đã load đầy đủ chưa
             if (typeof window.markmap === 'undefined' || 
-                typeof window.markmap.lib === 'undefined' ||
-                typeof window.markmap.lib.Transformer === 'undefined') {
+                typeof window.markmap.Transformer === 'undefined') {
                 
                 container.innerHTML = '<div class="loading-error">Đang tải thư viện D3/Markmap... (vui lòng chờ)</div>';
                 setTimeout(initializeMarkmap, 500);
@@ -1226,8 +1337,7 @@ function generateMindmapHTML(markdownContent, title = "Mindmap Visualization") {
             }
 
             try {
-                const { Markmap } = window.markmap;
-                const { Transformer } = window.markmap.lib;
+                const { Markmap, Transformer } = window.markmap;
                 
                 console.log('Markmap libraries loaded successfully');
                 
@@ -1288,8 +1398,7 @@ function generateMindmapHTML(markdownContent, title = "Mindmap Visualization") {
                 
                 if (typeof window.d3 !== 'undefined' && 
                     typeof window.markmap !== 'undefined' && 
-                    typeof window.markmap.lib !== 'undefined' &&
-                    typeof window.markmap.lib.Transformer !== 'undefined') {
+                    typeof window.markmap.Transformer !== 'undefined') {
                     
                     console.log('All libraries loaded successfully');
                     initializeMarkmap();

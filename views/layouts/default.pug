@@ -3,10 +3,13 @@ html(lang="vi")
   head
     meta(charset="UTF-8")
     meta(name="viewport", content="width=device-width, initial-scale=1.0")
+    link(rel="preconnect" href="https://fonts.googleapis.com")
+    link(rel="preconnect" href="https://fonts.gstatic.com" crossorigin)
+    link(href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet")
     link(href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css", rel="stylesheet")
     link(rel="stylesheet", href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css")
     link(rel="stylesheet", href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css")
-    link(rel="stylesheet", href="/css/style-main.css?v=1.1")
+    link(rel="stylesheet", href="/css/style-main.css?v=2.0")
     link(rel="stylesheet", href="/css/style-global-cursor.css")
     block styles
     title #{pageTitle} | MindTree
@@ -61,6 +64,13 @@ html(lang="vi")
                     a.dropdown-item(href="/dashboard")
                       i.fas.fa-th-large.me-2
                       | Bảng điều khiển
+                  if user.role === 'admin'
+                    li
+                      a.dropdown-item.text-primary.fw-bold(href="/admin/dashboard")
+                        i.fas.fa-shield-halved.me-2
+                        | Trang quản trị
+                    li
+                      hr.dropdown-divider
                   li
                     a.dropdown-item(href="/profile")
                       i.fas.fa-user.me-2
@@ -111,6 +121,8 @@ html(lang="vi")
     //- === KẾT THÚC TOAST ===  
 
 
+    //- Grain/Noise overlay cho hiệu ứng premium
+    .grain-overlay
 
     //- thanh footer
     footer.mt-auto.colors-footer.text-white.py-3.shadow-sm

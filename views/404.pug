@@ -12,11 +12,14 @@ block main
             //- Tiêu đề (lấy từ biến pageTitle mà index.js gửi qua)
             h1.card-title.fw-bold= pageTitle || 'Lỗi 404'
             
-            h2.card-subtitle.mb-3.text-muted Không tìm thấy trang
+            h2.card-subtitle.mb-3.text-muted= subtitle || 'Không tìm thấy trang'
             
             p.card-text.fs-5.mb-4
-              | Rất tiếc, trang bạn đang tìm kiếm có thể đã bị xóa, 
-              | đổi tên hoặc không bao giờ tồn tại.
+              if errorMessage
+                = errorMessage
+              else
+                | Rất tiếc, trang bạn đang tìm kiếm có thể đã bị xóa, 
+                | đổi tên hoặc không bao giờ tồn tại.
 
             //- Nút bấm quay về, tự động điều hướng
             //- (Biến 'user' được truyền vào từ middleware trong index.js)

@@ -1,0 +1,103 @@
+extends layouts/admin-layout.pug
+
+block admin_content
+  .d-flex.justify-content-between.align-items-center.mb-4
+    h2.mb-0 Quản lý danh sách người dùng
+    span.badge.bg-primary #{users.length} người dùng
+
+  .card.admin-card
+    .card-body.p-0
+      .table-responsive
+        table.table.table-hover.align-middle.mb-0
+          thead.table-light
+            tr
+              th(style="width: 80px;") STT
+              th Tên đăng nhập
+              th Email
+              th Vai trò
+              th Ngày tham gia
+              th Trạng thái
+              th(style="width: 180px;") Thao tác
+          tbody
+            if users.length === 0
+              tr
+                td.text-center.py-4(colspan="7") Chưa có người dùng nào đăng ký.
+            else
+              each u, index in users
+                tr(id=`user-row-${u._id}`)
+                  td.fw-semibold #{index + 1}
+                  td.fw-bold #{u.username}
+                  td #{u.email}
+                  td
+                    span.badge.bg-info #{u.role || 'student'}
+                  td #{new Date(u.createdAt || Date.now()).toLocaleDateString('vi-VN')}
+                  td
+                    span(id=`status-badge-${u._id}` class=`badge ${u.status === 'locked' ? 'badge-locked bg-danger' : 'badge-active bg-success'}`)
+                      | #{u.status === 'locked' ? 'Bị khóa' : 'Hoạt động'}
+                  td
+                    if u._id.toString() === user._id.toString()
+                      span.text-muted.small Không thể tự khóa
+                    else
+                      button.btn.btn-sm(
+                        id=`btn-toggle-${u._id}`
+                        class=`btn-action ${u.status === 'locked' ? 'btn-outline-success' : 'btn-outline-danger'}`
+                        onclick=`toggleUserStatus('${u._id}')`
+                      )
+                        if u.status === 'locked'
+                          i.fas.fa-unlock.me-1
+                          | Mở khóa
+                        else
+                          i.fas.fa-user-slash.me-1
+                          | Khóa tài khoản
+
+block scripts
+  script.
+    async function toggleUserStatus(userId) {
+      const btn = document.getElementById(`btn-toggle-${userId}`);
+      const badge = document.getElementById(`status-badge-${userId}`);
+      
+      if (!btn || !badge) return;
+
+      // Disable button during call
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Đang xử lý';
+
+      try {
+        const res = await fetch(`/admin/users/${userId}/toggle-status`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        const result = await res.json();
+        
+        if (result.success) {
+          showToast(result.message, 'Thành công', 'success');
+          
+          if (result.newStatus === 'locked') {
+            // Cập nhật giao diện sang trạng thái bị khóa
+            badge.className = 'badge badge-locked bg-danger';
+            badge.textContent = 'Bị khóa';
+            
+            btn.className = 'btn btn-sm btn-outline-success';
+            btn.innerHTML = '<i class="fas fa-unlock me-1"></i>Mở khóa';
+          } else {
+            // Cập nhật giao diện sang trạng thái hoạt động
+            badge.className = 'badge badge-active bg-success';
+            badge.textContent = 'Hoạt động';
+            
+            btn.className = 'btn btn-sm btn-outline-danger';
+            btn.innerHTML = '<i class="fas fa-user-slash me-1"></i>Khóa tài khoản';
+          }
+        } else {
+          showToast(result.message, 'Lỗi', 'error');
+          // Reset button text
+          btn.innerHTML = badge.textContent === 'Bị khóa' ? '<i class="fas fa-unlock me-1"></i>Mở khóa' : '<i class="fas fa-user-slash me-1"></i>Khóa tài khoản';
+        }
+      } catch (err) {
+        console.error(err);
+        showToast('Có lỗi xảy ra trong quá trình xử lý.', 'Thất bại', 'error');
+        btn.innerHTML = badge.textContent === 'Bị khóa' ? '<i class="fas fa-unlock me-1"></i>Mở khóa' : '<i class="fas fa-user-slash me-1"></i>Khóa tài khoản';
+      } finally {
+        btn.disabled = false;
+      }
+    }

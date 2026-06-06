@@ -1,0 +1,91 @@
+extends layouts/admin-layout.pug
+
+block admin_content
+  .d-flex.justify-content-between.align-items-center.mb-4
+    h2.mb-0 Kiểm duyệt tài liệu hệ thống
+    span.badge.bg-primary #{documents.length} tài liệu
+
+  .card.admin-card
+    .card-body.p-0
+      .table-responsive
+        table.table.table-hover.align-middle.mb-0
+          thead.table-light
+            tr
+              th(style="width: 80px;") STT
+              th Tên tài liệu
+              th Định dạng
+              th Dung lượng
+              th Người tải lên
+              th Ngày tải lên
+              th(style="width: 140px;") Thao tác
+          tbody
+            if documents.length === 0
+              tr
+                td.text-center.py-4(colspan="7") Chưa có tài liệu nào được tải lên.
+            else
+              each doc, index in documents
+                tr(id=`doc-row-${doc._id}`)
+                  td.fw-semibold #{index + 1}
+                  td.fw-bold
+                    i.fas.fa-file-lines.text-secondary.me-2
+                    | #{doc.title}
+                  td
+                    span.badge.bg-secondary #{doc.fileType ? doc.fileType.split('/')[1] || 'bin' : 'N/A'}
+                  td #{doc.size ? (doc.size / (1024 * 1024)).toFixed(2) : '0.00'} MB
+                  td #{doc.username}
+                  td #{new Date(doc.createdAt || Date.now()).toLocaleDateString('vi-VN')}
+                  td
+                    button.btn.btn-sm.btn-outline-danger(
+                      id=`btn-delete-${doc._id}`
+                      onclick=`deleteDocument('${doc._id}')`
+                    )
+                      i.fas.fa-trash.me-1
+                      | Xóa vi phạm
+
+block scripts
+  script.
+    async function deleteDocument(docId) {
+      if (!confirm('Bạn có chắc chắn muốn xóa tài liệu vi phạm này khỏi hệ thống?')) return;
+      
+      const btn = document.getElementById(`btn-delete-${docId}`);
+      const row = document.getElementById(`doc-row-${docId}`);
+      
+      if (!btn || !row) return;
+
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Đang xóa';
+
+      try {
+        const res = await fetch(`/admin/documents/${docId}/delete`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        const result = await res.json();
+        
+        if (result.success) {
+          showToast(result.message, 'Thành công', 'success');
+          // Xóa hàng khỏi bảng với hiệu ứng phai mờ
+          row.style.transition = 'all 0.5s ease';
+          row.style.opacity = '0';
+          setTimeout(() => {
+            row.remove();
+            // Cập nhật số lượng tài liệu hiển thị ở tiêu đề
+            const countBadge = document.querySelector('.badge.bg-primary');
+            if (countBadge) {
+              const curCount = parseInt(countBadge.textContent, 10);
+              countBadge.textContent = `${curCount - 1} tài liệu`;
+            }
+          }, 500);
+        } else {
+          showToast(result.message, 'Lỗi', 'error');
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-trash me-1"></i>Xóa vi phạm';
+        }
+      } catch (err) {
+        console.error(err);
+        showToast('Có lỗi xảy ra khi xóa tài liệu.', 'Thất bại', 'error');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-trash me-1"></i>Xóa vi phạm';
+      }
+    }
