@@ -30,7 +30,7 @@ const AI_CONCURRENCY = parseInt(process.env.AI_CONCURRENCY || process.env.GLOBAL
 const CACHE_TTL_SECONDS = parseInt(process.env.DOCUMENT_CACHE_TTL_SECONDS || String(7 * 24 * 60 * 60), 10);
 const MAX_UPLOAD_MB = parseFloat(process.env.MAX_DOCUMENT_UPLOAD_MB || '5');
 const MAX_UPLOAD_BYTES = Math.floor(MAX_UPLOAD_MB * 1024 * 1024);
-const MAX_FALLBACK_TEXT_CHARS = parseInt(process.env.MAX_FALLBACK_TEXT_CHARS || '120000', 10);
+const MAX_FALLBACK_TEXT_CHARS = parseInt(process.env.MAX_FALLBACK_TEXT_CHARS || '500000', 10);
 const TEMP_UPLOAD_DIR = path.join(__dirname, '..', 'temp', 'uploads');
 const CACHE_PREFIX = 'mindmap:document:';
 
@@ -103,16 +103,11 @@ function handleDocumentUpload(req, res, next) {
   });
 }
 
-const MindmapLeafSchema = z.object({
+const MindmapNodeSchema = z.lazy(() => z.object({
   title: z.string().trim().min(1),
   points: z.array(z.string().trim().min(1)).optional().default([]),
-});
-
-const MindmapChildSchema = z.object({
-  title: z.string().trim().min(1),
-  points: z.array(z.string().trim().min(1)).optional().default([]),
-  children: z.array(MindmapLeafSchema).optional().default([]),
-});
+  children: z.array(MindmapNodeSchema).optional().default([]),
+}));
 
 const MindmapDocumentSchema = z.object({
   mainTopic: z.string().trim().min(1),
@@ -120,7 +115,7 @@ const MindmapDocumentSchema = z.object({
   subTopics: z.array(z.object({
     chapterTitle: z.string().trim().min(1),
     points: z.array(z.string().trim().min(1)).optional().default([]),
-    children: z.array(MindmapChildSchema).optional().default([]),
+    children: z.array(MindmapNodeSchema).optional().default([]),
   })).min(1),
 });
 
@@ -138,7 +133,7 @@ function childResponseSchema(depth = 0) {
     propertyOrdering: ['title', 'points'],
   };
 
-  if (depth < 2) {
+  if (depth < 6) {
     schema.properties.children = {
       type: Type.ARRAY,
       items: childResponseSchema(depth + 1),
@@ -429,11 +424,18 @@ function generateMarkdownFromMindmap(mindmap) {
   }
 
   const appendChild = (child, depth) => {
-    const headingDepth = Math.min(Math.max(depth, 2), 6);
-    lines.push('');
-    lines.push(`${'#'.repeat(headingDepth)} ${cleanLine(child.title)}`);
-    (child.points || []).forEach((point) => lines.push(`- ${cleanLine(point)}`));
-    (child.children || []).forEach((nested) => appendChild(nested, headingDepth + 1));
+    if (depth <= 6) {
+      const headingDepth = Math.min(Math.max(depth, 2), 6);
+      lines.push('');
+      lines.push(`${'#'.repeat(headingDepth)} ${cleanLine(child.title)}`);
+      (child.points || []).forEach((point) => lines.push(`- ${cleanLine(point)}`));
+      (child.children || []).forEach((nested) => appendChild(nested, depth + 1));
+    } else {
+      const indent = '  '.repeat(depth - 6);
+      lines.push(`${indent}- ${cleanLine(child.title)}`);
+      (child.points || []).forEach((point) => lines.push(`${indent}  - ${cleanLine(point)}`));
+      (child.children || []).forEach((nested) => appendChild(nested, depth + 1));
+    }
   };
 
   (mindmap.subTopics || []).forEach((topic) => {
@@ -446,25 +448,96 @@ function generateMarkdownFromMindmap(mindmap) {
   return lines.join('\n').trim();
 }
 
-function buildGeminiPrompt(filename) {
-  return `Bạn là hệ thống phân tích tài liệu học tập và tạo sơ đồ tư duy.
+const JSON_SCHEMA_DESCRIPTION = `
+Cấu trúc JSON yêu cầu phải khớp chính xác với đặc tả đệ quy dưới đây:
+{
+  "mainTopic": "Tên chủ đề chính/tiêu đề tổng quát của tài liệu (string, bắt buộc)",
+  "summary": "Tóm tắt ngắn gọn, tổng quan toàn bộ tài liệu (string, bắt buộc)",
+  "subTopics": [
+    {
+      "chapterTitle": "Tên chương/mục lớn thứ nhất (string, bắt buộc)",
+      "points": [
+        "Các ý chính hoặc định nghĩa quan trọng nhất ở cấp độ chương (mảng chuỗi, tùy chọn)"
+      ],
+      "children": [
+        {
+          "title": "Nhánh con cấp 1 - chi tiết cụ thể hơn (string, bắt buộc - ví dụ: tên bài học, mục con)",
+          "points": [
+            "Chi tiết cụ thể hoặc ghi chú cho nhánh con cấp 1 này (mảng chuỗi, tùy chọn)"
+          ],
+          "children": [
+            {
+              "title": "Nhánh con cấp 2 - chi tiết sâu hơn (string, bắt buộc - ví dụ: khái niệm nhỏ, ý phụ)",
+              "points": [
+                "Chi tiết cụ thể hoặc ghi chú cho nhánh con cấp 2 này (mảng chuỗi, tùy chọn)"
+              ],
+              "children": [
+                {
+                  "title": "Nhánh con cấp 3 (hoặc sâu hơn nữa) - chi tiết sâu nhất (string, bắt buộc)",
+                  "points": [
+                    "Các điểm ghi chú chi tiết cuối cùng của nhánh này (mảng chuỗi, tùy chọn)"
+                  ],
+                  "children": []
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
 
+QUY TẮC PHÂN TÍCH & THIẾT KẾ SƠ ĐỒ CHI TIẾT (BẮT BUỘC):
+1. KHÔNG GIAN SƠ ĐỒ RỘNG LỚN & KHÔNG GIỚI HẠN SỐ TẦNG LỚP (Cần chi tiết, có thể từ 4 đến 8 tầng):
+   - Bạn được phép tự do tạo ra sơ đồ tư duy có cấu trúc phân cấp sâu tùy ý, không giới hạn số tầng lớp (ví dụ có thể sâu tới 5, 6, 7, 8 tầng hoặc hơn: mainTopic -> subTopics -> children cấp 1 -> children cấp 2 -> children cấp 3 -> children cấp 4...).
+   - Hãy đào sâu phân tích từng ý phụ, từng mục con trong tài liệu. Tuyệt đối không được gộp toàn bộ nội dung chi tiết vào một mảng 'points' phẳng ở tầng trên cùng. Mảng 'points' chỉ dùng để ghi chú các điểm tóm tắt ngắn cho nút hiện tại. Để mô tả chi tiết và cụ thể hơn, bạn phải mở thêm mảng 'children' để phân nhánh sâu xuống các cấp dưới.
+2. PHÂN TÍCH TOÀN DIỆN, ĐẦY ĐỦ, KHÔNG TÓM TẮT SƠ SÀI:
+   - Hãy bao quát toàn bộ nội dung của tài liệu. Không được bỏ sót các chương, bài học, khái niệm quan trọng, định nghĩa hay ví dụ thực tế.
+   - Sơ đồ tư duy được tạo ra phải tương xứng với độ dài của tài liệu gốc. Tài liệu càng dài thì số lượng 'subTopics' và các nhánh con 'children' lồng nhau càng phải nhiều, phong phú và đầy đủ.
+   - Bạn hãy tận dụng tối đa dung lượng output cho phép (tối đa 8,192 tokens) để viết thật chi tiết, đầy đủ, và sâu sắc nhất có thể.
+3. TIÊU ĐỀ NÚT SÚC TÍCH (DƯỚI 10 TỪ):
+   - Tiêu đề của mỗi nút ('chapterTitle' và 'title') phải rất ngắn gọn, rõ nghĩa (dưới 10 từ).
+   - Tuyệt đối KHÔNG viết nguyên một câu dài hay đoạn văn dài vào trường 'chapterTitle' hoặc 'title'. Các phần giải thích, định nghĩa chi tiết bắt buộc phải đưa vào mảng 'points' của nút tương ứng.
+4. TÍNH HỢP LỆ TUYỆT ĐỐI CỦA SCHEMA:
+   - Tất cả các đối tượng con nằm trong mảng 'children' bắt buộc phải có thuộc tính 'title' (kiểu string, không được undefined hoặc thiếu).
+   - Nếu một nút không có nhánh con sâu hơn, hãy để mảng 'children' là mảng rỗng [] thay vì bỏ qua thuộc tính hoặc gán null.
+5. NGÔN NGỮ:
+   - Kết quả trả về phải sử dụng tiếng Việt chính xác và tự nhiên nếu tài liệu gốc là tiếng Việt hoặc khi phân tích tài liệu tiếng Việt.
+`;
+
+function buildGeminiPrompt(filename) {
+  return `Bạn là hệ thống phân tích tài liệu học tập và tạo sơ đồ tư duy chuyên nghiệp cấp cao.
 Hãy đọc toàn bộ file đính kèm "${filename}" bằng ngữ cảnh gốc của Gemini File API. Không chia nhỏ tài liệu theo chunk.
 
 Yêu cầu:
-- Trả về duy nhất một JSON object đúng schema đã được cung cấp.
-- mainTopic là chủ đề chính của tài liệu.
-- summary là một câu tóm tắt ngắn.
-- subTopics là các chương/mục lớn theo đúng logic tài liệu.
-- Mỗi subTopic có chapterTitle, points và children.
-- points là các ý quan trọng, ngắn gọn, có thể dùng trực tiếp để vẽ mindmap.
-- children là các nhánh con; nếu không có thì trả về mảng rỗng.
+- Trả về duy nhất một JSON object đúng schema đệ quy đã được mô tả bên dưới.
+- Lập sơ đồ tư duy cực kỳ chi tiết, phong phú, thể hiện đầy đủ các khía cạnh và chiều sâu của tài liệu gốc.
 - Không thêm markdown, không giải thích ngoài JSON.
-- Ưu tiên tiếng Việt nếu tài liệu là tiếng Việt.`;
+- Ưu tiên tiếng Việt nếu tài liệu là tiếng Việt.
+
+${JSON_SCHEMA_DESCRIPTION}`;
 }
 
 function buildTextPrompt(filename, text) {
   return `${buildGeminiPrompt(filename)}
+
+Nội dung tài liệu:
+${text}`;
+}
+
+function buildFallbackTextPrompt(filename, text) {
+  return `Bạn là hệ thống phân tích tài liệu học tập và tạo sơ đồ tư duy chuyên nghiệp cấp cao.
+
+Dưới đây là toàn bộ nội dung văn bản trích xuất từ tài liệu "${filename}". Hãy đọc hiểu toàn bộ nội dung này và lập sơ đồ tư duy cực kỳ chi tiết, đầy đủ và phân cấp sâu sắc nhất có thể.
+
+Yêu cầu:
+- Trả về duy nhất một JSON object đúng schema đệ quy đã được mô tả bên dưới.
+- Lập sơ đồ tư duy cực kỳ chi tiết, phong phú, thể hiện đầy đủ các khía cạnh và chiều sâu của tài liệu gốc.
+- Không thêm markdown, không giải thích ngoài JSON.
+- Ưu tiên tiếng Việt nếu tài liệu là tiếng Việt.
+
+${JSON_SCHEMA_DESCRIPTION}
 
 Nội dung tài liệu:
 ${text}`;
@@ -736,37 +809,58 @@ async function generateWithGroqText(file, text, res) {
 
 async function generateWithOpenRouterText(file, text, res) {
   if (!OPENROUTER_API_KEY) throw new Error('OPENROUTER_API_KEY chưa được cấu hình.');
-  progress(res, `Đang chuyển sang OpenRouter (${OPENROUTER_MODEL})...`, 50);
 
-  const response = await axios.post(
-    'https://openrouter.ai/api/v1/chat/completions',
-    {
-      model: OPENROUTER_MODEL,
-      messages: [
-        { role: 'system', content: 'Trả về duy nhất JSON hợp lệ đúng schema. Không markdown, không giải thích.' },
-        { role: 'user', content: buildTextPrompt(file.originalname, text) },
-      ],
-      temperature: 0.1,
-      max_tokens: 8192,
-      response_format: { type: 'json_object' },
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': process.env.APP_PUBLIC_URL || 'http://localhost:3000',
-        'X-Title': 'Mindmap Generator',
-      },
-      timeout: 60000,
-    },
-  );
+  const models = [
+    OPENROUTER_MODEL,
+    'google/gemini-2.0-flash-lite-preview:free',
+    'qwen/qwen-2.5-72b-instruct:free',
+    'google/gemini-2.5-flash',
+    'deepseek/deepseek-chat'
+  ].filter(Boolean);
 
-  return {
-    mindmap: parseProviderJsonResponse(response.data?.choices?.[0]?.message?.content),
-    provider: 'openrouter',
-    model: OPENROUTER_MODEL,
-    rawLength: response.data?.choices?.[0]?.message?.content?.length || 0,
-  };
+  let lastError = null;
+  for (const model of models) {
+    try {
+      progress(res, `Đang chuyển sang OpenRouter (${model})...`, 50);
+      const response = await axios.post(
+        'https://openrouter.ai/api/v1/chat/completions',
+        {
+          model: model,
+          messages: [
+            { role: 'system', content: 'Trả về duy nhất JSON hợp lệ đúng schema. Không markdown, không giải thích.' },
+            { role: 'user', content: buildFallbackTextPrompt(file.originalname, text) },
+          ],
+          temperature: 0.1,
+          max_tokens: 8192,
+          response_format: { type: 'json_object' },
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+            'Content-Type': 'application/json',
+            'HTTP-Referer': process.env.APP_PUBLIC_URL || 'http://localhost:3000',
+            'X-Title': 'Mindmap Generator',
+          },
+          timeout: 90000,
+        },
+      );
+
+      const content = response.data?.choices?.[0]?.message?.content;
+      if (!content) throw new Error('Empty response from OpenRouter');
+
+      return {
+        mindmap: parseProviderJsonResponse(content),
+        provider: 'openrouter',
+        model: model,
+        rawLength: content.length,
+      };
+    } catch (err) {
+      lastError = err;
+      console.warn(`[Gateway] OpenRouter model ${model} failed:`, err.message);
+    }
+  }
+
+  throw new Error(`Tất cả các model của OpenRouter đều thất bại: ${lastError?.message}`);
 }
 
 async function generateMindmapWithFallback(file, res) {

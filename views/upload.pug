@@ -600,12 +600,22 @@ block scripts
       const appendChild = (node, depth) => {
         const title = clean(node?.title || node?.chapterTitle);
         if (!title) return;
-        lines.push(`${'#'.repeat(Math.min(depth, 6))} ${title}`);
-        (node.points || []).forEach((point) => {
-          const text = clean(point);
-          if (text) lines.push(`- ${text}`);
-        });
-        (node.children || []).forEach((child) => appendChild(child, depth + 1));
+        if (depth <= 6) {
+          lines.push(`${'#'.repeat(depth)} ${title}`);
+          (node.points || []).forEach((point) => {
+            const text = clean(point);
+            if (text) lines.push(`- ${text}`);
+          });
+          (node.children || []).forEach((child) => appendChild(child, depth + 1));
+        } else {
+          const indent = '  '.repeat(depth - 6);
+          lines.push(`${indent}- ${title}`);
+          (node.points || []).forEach((point) => {
+            const text = clean(point);
+            if (text) lines.push(`${indent}  - ${text}`);
+          });
+          (node.children || []).forEach((child) => appendChild(child, depth + 1));
+        }
       };
 
       (source.subTopics || []).forEach((topic) => appendChild(topic, 2));

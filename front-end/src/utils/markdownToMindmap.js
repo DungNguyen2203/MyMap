@@ -77,7 +77,7 @@ export const markdownToMindmap = (markdownContent) => {
       type: 'custom',
       position: { x: 0, y: 0 },
       data: {
-        label: text.length > 120 ? text.slice(0, 120) + "..." : text, // cắt text dài
+        label: text,
         style: getStyleByLevel(level),
       },
     };
@@ -174,8 +174,8 @@ export const fastLayout = (nodes, edges) => {
     isLeft: false
   };
 
-  const NODE_GAP = 25; // Khoảng cách giãn cách tối thiểu bằng pixel giữa các node
-  const H_SPACE = 270; // Khoảng cách ngang tối ưu
+  const NODE_GAP = 55; // Khoảng cách giãn cách tối thiểu bằng pixel giữa các node (Tăng từ 25 để các node không quá gần nhau)
+  const H_SPACE = 340; // Khoảng cách ngang tối ưu (Tăng từ 270 để tăng độ giãn cách ngang giữa cha-con)
 
   // Bước 1: Tính chiều cao bằng pixel (bao gồm cả con) của mỗi nhánh cây con
   const subtreePixelHeights = new Map();
