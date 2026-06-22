@@ -17,7 +17,7 @@ import CustomEdgeToolbar from './components/CustomEdgeToolbar';
 import DarkModeToggle from './components/DarkModeToggle';
 import './App.scss';
 import DrawAreaNode from './components/DrawAreaNode';
-import { markdownToMindmap } from './utils/markdownToMindmap';
+import { markdownToMindmap, jsonToReactFlow } from './utils/markdownToMindmap';
 import CytoscapeMindmap from './components/CytoscapeMindmap';
 import { useCollaboration } from './hooks/useCollaboration';
 
@@ -481,9 +481,12 @@ function MindmapEditor() {
             const data = await res.json();
             if (!data.success || !data.data) throw new Error('Dữ liệu không hợp lệ');
 
-            // Ưu tiên nodes/edges đã lưu, nếu không có thì mới chuyển từ markdown
+            // Ưu tiên nodes/edges đã lưu, nếu không có thì chuyển đổi trực tiếp từ JSON cây gốc, cuối cùng mới fallback ra markdown
             if (data.data.nodes && data.data.nodes.length > 0) {
               loadState({ nodes: data.data.nodes, edges: data.data.edges });
+            } else if (data.data.mindmapJson) {
+              const { nodes, edges } = jsonToReactFlow(data.data.mindmapJson);
+              loadState({ nodes, edges });
             } else {
               const safeMarkdown = typeof data.data.content === 'string' ? data.data.content : '# Mindmap moi';
               const { nodes, edges } = markdownToMindmap(safeMarkdown);
@@ -563,6 +566,11 @@ function ImportMindmap() {
       if (data.data.nodes && data.data.nodes.length > 0) {
         nodes = data.data.nodes;
         edges = data.data.edges || [];
+      } else if (data.data.mindmapJson) {
+        // Dùng JSON cây gốc để vẽ chính xác phân cấp
+        const result = jsonToReactFlow(data.data.mindmapJson);
+        nodes = result.nodes;
+        edges = result.edges;
       } else {
         // Nếu không, chuyển đổi từ markdown
         const markdownText = typeof data.data.content === 'string' ? data.data.content : '# Mindmap moi';

@@ -196,6 +196,7 @@ block scripts
     // Biến toàn cục để theo dõi trạng thái
     let isSaving = false;
     let mindmapData = null;
+    let mindmapRawJson = null;
     let visualizationUrl = null;
     let streamAbortController = null;
     let streamRawJson = '';
@@ -479,6 +480,7 @@ block scripts
 
     function handleCompleteEvent(data) {
       mindmapData = data.markdown;
+      mindmapRawJson = data.mindmap;
       visualizationUrl = data.visualizationUrl;
       renderLiveMarkdown(mindmapData);
 
@@ -749,7 +751,7 @@ block scripts
         const response = await fetch('/mindmaps/create', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title: title, content: mindmapData }),
+          body: JSON.stringify({ title: title, content: mindmapData, mindmapJson: mindmapRawJson }),
         });
 
         const result = await response.json();

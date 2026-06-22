@@ -104,7 +104,12 @@ function CustomNode({ id, data, selected }) {
     textSizer.style.fontWeight = s.fontWeight || 'normal';
     textSizer.style.fontStyle = s.fontStyle || 'normal';
     const currentText = (isTexting ? label : data.label) || ' ';
-    textSizer.textContent = currentText + '\u200B';
+    if (data.points && data.points.length > 0 && !isEditing && !isTexting) {
+      const pointsHtml = data.points.map(pt => `<li style="margin-bottom:3px; word-break:break-word;">${pt}</li>`).join('');
+      textSizer.innerHTML = `<div style="word-break:break-word;">${currentText}</div><ul style="margin-top:6px; padding-left:15px; font-size:11px; list-style-type:disc; line-height:1.3; color:${s.color || '#333'}">${pointsHtml}</ul>`;
+    } else {
+      textSizer.textContent = currentText + '\u200B';
+    }
     const newSize = {};
     let sizeChanged = false;
     let textSizerWidth;
@@ -137,7 +142,9 @@ function CustomNode({ id, data, selected }) {
   }, [
     label,
     data.label,
+    data.points,
     isTexting,
+    isEditing,
     id,
     updateNodeSize,
     data.style.width,
@@ -248,6 +255,25 @@ function CustomNode({ id, data, selected }) {
 
         {renderIcon()}
         <div className="node-label">{data.label || '...'}</div>
+        {data.points && data.points.length > 0 && !isEditing && !isTexting && (
+          <ul className="node-points-list" style={{ 
+            marginTop: '6px', 
+            paddingLeft: '15px', 
+            fontSize: '11px', 
+            textAlign: 'left', 
+            opacity: 0.85,
+            borderTop: '1px dashed rgba(0,0,0,0.15)',
+            paddingTop: '6px',
+            listStyleType: 'disc',
+            color: nodeStyle.color || '#333',
+            fontFamily: nodeStyle.fontFamily || 'Arial',
+            lineHeight: '1.3'
+          }}>
+            {data.points.map((point, index) => (
+              <li key={index} style={{ marginBottom: '3px', wordBreak: 'break-word' }}>{point}</li>
+            ))}
+          </ul>
+        )}
         <textarea
           ref={textareaRef}
           value={label}

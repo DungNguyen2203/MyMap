@@ -133,7 +133,7 @@ function childResponseSchema(depth = 0) {
     propertyOrdering: ['title', 'points'],
   };
 
-  if (depth < 6) {
+  if (depth < 10) {
     schema.properties.children = {
       type: Type.ARRAY,
       items: childResponseSchema(depth + 1),
@@ -449,35 +449,39 @@ function generateMarkdownFromMindmap(mindmap) {
 }
 
 const JSON_SCHEMA_DESCRIPTION = `
-Cấu trúc JSON yêu cầu phải khớp chính xác với đặc tả đệ quy dưới đây:
+Trả về JSON khớp chính xác schema đệ quy sau:
 {
-  "mainTopic": "Tên chủ đề chính/tiêu đề tổng quát của tài liệu (string, bắt buộc)",
-  "summary": "Tóm tắt ngắn gọn, tổng quan toàn bộ tài liệu (string, bắt buộc)",
+  "mainTopic": "Tiêu đề tổng quát (string, bắt buộc)",
+  "summary": "Tóm tắt ngắn gọn toàn tài liệu (string, bắt buộc)",
   "subTopics": [
     {
-      "chapterTitle": "Tên chương/mục lớn thứ nhất (string, bắt buộc)",
-      "points": [
-        "Các ý chính hoặc định nghĩa quan trọng nhất ở cấp độ chương (mảng chuỗi, tùy chọn)"
-      ],
+      "chapterTitle": "Tên chương/mục lớn (string, bắt buộc, dưới 10 từ)",
+      "points": ["Ghi chú ngắn cho mục này (mảng chuỗi, tùy chọn)"],
       "children": [
         {
-          "title": "Nhánh con cấp 1 - chi tiết cụ thể hơn (string, bắt buộc - ví dụ: tên bài học, mục con)",
-          "points": [
-            "Chi tiết cụ thể hoặc ghi chú cho nhánh con cấp 1 này (mảng chuỗi, tùy chọn)"
-          ],
+          "title": "Mục con cấp 1 (string, bắt buộc, dưới 10 từ)",
+          "points": ["Ghi chú ngắn"],
           "children": [
             {
-              "title": "Nhánh con cấp 2 - chi tiết sâu hơn (string, bắt buộc - ví dụ: khái niệm nhỏ, ý phụ)",
-              "points": [
-                "Chi tiết cụ thể hoặc ghi chú cho nhánh con cấp 2 này (mảng chuỗi, tùy chọn)"
-              ],
+              "title": "Mục con cấp 2",
+              "points": ["..."],
               "children": [
                 {
-                  "title": "Nhánh con cấp 3 (hoặc sâu hơn nữa) - chi tiết sâu nhất (string, bắt buộc)",
-                  "points": [
-                    "Các điểm ghi chú chi tiết cuối cùng của nhánh này (mảng chuỗi, tùy chọn)"
-                  ],
-                  "children": []
+                  "title": "Mục con cấp 3",
+                  "points": ["..."],
+                  "children": [
+                    {
+                      "title": "Mục con cấp 4",
+                      "points": ["..."],
+                      "children": [
+                        {
+                          "title": "Mục con cấp 5 (có thể sâu hơn nữa)",
+                          "points": ["..."],
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
                 }
               ]
             }
@@ -485,35 +489,26 @@ Cấu trúc JSON yêu cầu phải khớp chính xác với đặc tả đệ qu
         }
       ]
     }
-  ]
+  "mainTopic": "string",
+  "summary": "string",
+  "subTopics": [{ "chapterTitle": "string", "points": ["string"], "children": [...] }]
 }
 
-QUY TẮC PHÂN TÍCH & THIẾT KẾ SƠ ĐỒ CHI TIẾT (BẮT BUỘC):
-1. KHÔNG GIAN SƠ ĐỒ RỘNG LỚN & KHÔNG GIỚI HẠN SỐ TẦNG LỚP (Cần chi tiết, có thể từ 4 đến 8 tầng):
-   - Bạn được phép tự do tạo ra sơ đồ tư duy có cấu trúc phân cấp sâu tùy ý, không giới hạn số tầng lớp (ví dụ có thể sâu tới 5, 6, 7, 8 tầng hoặc hơn: mainTopic -> subTopics -> children cấp 1 -> children cấp 2 -> children cấp 3 -> children cấp 4...).
-   - Hãy đào sâu phân tích từng ý phụ, từng mục con trong tài liệu. Tuyệt đối không được gộp toàn bộ nội dung chi tiết vào một mảng 'points' phẳng ở tầng trên cùng. Mảng 'points' chỉ dùng để ghi chú các điểm tóm tắt ngắn cho nút hiện tại. Để mô tả chi tiết và cụ thể hơn, bạn phải mở thêm mảng 'children' để phân nhánh sâu xuống các cấp dưới.
-2. PHÂN TÍCH TOÀN DIỆN, ĐẦY ĐỦ, KHÔNG TÓM TẮT SƠ SÀI:
-   - Hãy bao quát toàn bộ nội dung của tài liệu. Không được bỏ sót các chương, bài học, khái niệm quan trọng, định nghĩa hay ví dụ thực tế.
-   - Sơ đồ tư duy được tạo ra phải tương xứng với độ dài của tài liệu gốc. Tài liệu càng dài thì số lượng 'subTopics' và các nhánh con 'children' lồng nhau càng phải nhiều, phong phú và đầy đủ.
-   - Bạn hãy tận dụng tối đa dung lượng output cho phép (tối đa 8,192 tokens) để viết thật chi tiết, đầy đủ, và sâu sắc nhất có thể.
-3. TIÊU ĐỀ NÚT SÚC TÍCH (DƯỚI 10 TỪ):
-   - Tiêu đề của mỗi nút ('chapterTitle' và 'title') phải rất ngắn gọn, rõ nghĩa (dưới 10 từ).
-   - Tuyệt đối KHÔNG viết nguyên một câu dài hay đoạn văn dài vào trường 'chapterTitle' hoặc 'title'. Các phần giải thích, định nghĩa chi tiết bắt buộc phải đưa vào mảng 'points' của nút tương ứng.
-4. TÍNH HỢP LỆ TUYỆT ĐỐI CỦA SCHEMA:
-   - Tất cả các đối tượng con nằm trong mảng 'children' bắt buộc phải có thuộc tính 'title' (kiểu string, không được undefined hoặc thiếu).
-   - Nếu một nút không có nhánh con sâu hơn, hãy để mảng 'children' là mảng rỗng [] thay vì bỏ qua thuộc tính hoặc gán null.
-5. NGÔN NGỮ:
-   - Kết quả trả về phải sử dụng tiếng Việt chính xác và tự nhiên nếu tài liệu gốc là tiếng Việt hoặc khi phân tích tài liệu tiếng Việt.
+QUY TẮC PHÂN TÍCH:
+1. ĐỘ SÂU & CHI TIẾT: Xây dựng sơ đồ phân cấp sâu (4-10 tầng). Tận dụng tối đa token output để trích xuất đầy đủ, sâu sắc mọi khía cạnh tài liệu.
+2. CẤU TRÚC: Phân rã logic theo phân cấp (Topic -> Subtopic -> Details). KHÔNG dồn nội dung vào mảng 'points' ở cấp cao; hãy tách thành các 'children' con.
+3. TIÊU ĐỀ: Ngắn gọn (dưới 10 từ). Giải thích chi tiết đưa vào 'points'.
+4. ĐIỀU KIỆN DỪNG: Chỉ tạo nhánh 'children' khi có nội dung thực tế. Node lá phải có mảng 'children' trống [].
+5. ĐỊNH DẠNG: Tuyệt đối không markdown, không giải thích. Chỉ trả về JSON thuần.
 `;
 
 function buildGeminiPrompt(filename) {
-  return `Bạn là hệ thống phân tích tài liệu học tập và tạo sơ đồ tư duy chuyên nghiệp cấp cao.
-Hãy đọc toàn bộ file đính kèm "${filename}" bằng ngữ cảnh gốc của Gemini File API. Không chia nhỏ tài liệu theo chunk.
+  return `Bạn là hệ thống phân tích tài liệu và tạo sơ đồ tư duy chuyên nghiệp.
+Đọc toàn bộ file "${filename}" và lập sơ đồ tư duy phân cấp sâu, chi tiết, đầy đủ nhất có thể.
 
 Yêu cầu:
-- Trả về duy nhất một JSON object đúng schema đệ quy đã được mô tả bên dưới.
-- Lập sơ đồ tư duy cực kỳ chi tiết, phong phú, thể hiện đầy đủ các khía cạnh và chiều sâu của tài liệu gốc.
-- Không thêm markdown, không giải thích ngoài JSON.
+- Trả về DUY NHẤT một JSON object đúng schema đệ quy bên dưới. Không markdown, không giải thích.
+- Phân cấp sâu 4-10 tầng tùy độ phức tạp. Bao quát mọi chương, mục, khái niệm trong tài liệu.
 - Ưu tiên tiếng Việt nếu tài liệu là tiếng Việt.
 
 ${JSON_SCHEMA_DESCRIPTION}`;
@@ -527,14 +522,12 @@ ${text}`;
 }
 
 function buildFallbackTextPrompt(filename, text) {
-  return `Bạn là hệ thống phân tích tài liệu học tập và tạo sơ đồ tư duy chuyên nghiệp cấp cao.
-
-Dưới đây là toàn bộ nội dung văn bản trích xuất từ tài liệu "${filename}". Hãy đọc hiểu toàn bộ nội dung này và lập sơ đồ tư duy cực kỳ chi tiết, đầy đủ và phân cấp sâu sắc nhất có thể.
+  return `Bạn là hệ thống phân tích tài liệu và tạo sơ đồ tư duy chuyên nghiệp.
+Dưới đây là nội dung văn bản trích xuất từ "${filename}". Lập sơ đồ tư duy phân cấp sâu, chi tiết, đầy đủ nhất có thể.
 
 Yêu cầu:
-- Trả về duy nhất một JSON object đúng schema đệ quy đã được mô tả bên dưới.
-- Lập sơ đồ tư duy cực kỳ chi tiết, phong phú, thể hiện đầy đủ các khía cạnh và chiều sâu của tài liệu gốc.
-- Không thêm markdown, không giải thích ngoài JSON.
+- Trả về DUY NHẤT một JSON object đúng schema đệ quy bên dưới. Không markdown, không giải thích.
+- Phân cấp sâu 4-10 tầng tùy độ phức tạp. Bao quát mọi chương, mục, khái niệm.
 - Ưu tiên tiếng Việt nếu tài liệu là tiếng Việt.
 
 ${JSON_SCHEMA_DESCRIPTION}
@@ -590,7 +583,7 @@ async function generateWithVercelStreamObject(file, res) {
       ],
     }],
     temperature: 0.1,
-    maxOutputTokens: 8192,
+    maxOutputTokens: 65536,
   });
 
   let rawJson = '';
@@ -677,7 +670,7 @@ async function generateWithGeminiFile(file, res) {
         config: {
           temperature: 0.1,
           topP: 0.9,
-          maxOutputTokens: 8192,
+          maxOutputTokens: 65536,
           responseMimeType: 'application/json',
           responseSchema: GEMINI_MINDMAP_SCHEMA,
         },
@@ -787,7 +780,7 @@ async function generateWithGroqText(file, text, res) {
         { role: 'user', content: buildTextPrompt(file.originalname, text) },
       ],
       temperature: 0.1,
-      max_tokens: 8192,
+      max_tokens: 16384,
       response_format: { type: 'json_object' },
     },
     {
@@ -831,7 +824,7 @@ async function generateWithOpenRouterText(file, text, res) {
             { role: 'user', content: buildFallbackTextPrompt(file.originalname, text) },
           ],
           temperature: 0.1,
-          max_tokens: 8192,
+          max_tokens: 32768,
           response_format: { type: 'json_object' },
         },
         {
@@ -961,6 +954,7 @@ async function processStreamingUpload(req, res) {
       progress(res, 'Cache hit: đã tìm thấy mindmap cho file này.', 95, { cache: 'hit' });
       sendSSE(res, 'complete', {
         markdown: payload.markdown,
+        mindmap: payload.mindmap,
         visualizationUrl: `/upload/mindmap-visualization/${fileHash}`,
         stats: payload.stats,
       });
@@ -1012,6 +1006,7 @@ async function processStreamingUpload(req, res) {
     progress(res, 'Hoàn tất, đã lưu kết quả vào cache.', 100);
     sendSSE(res, 'complete', {
       markdown: payload.markdown,
+      mindmap: payload.mindmap,
       visualizationUrl: `/upload/mindmap-visualization/${fileHash}`,
       stats: payload.stats,
     });

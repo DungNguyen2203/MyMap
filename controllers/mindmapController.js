@@ -4,8 +4,8 @@ const { ObjectId } = require('mongodb');
 exports.createMindmap = async (req, res) => {
     try {
         const db = req.app.locals.mindmapsDb;
-        // === SỬA Ở ĐÂY: Nhận title và content (là markdown string) từ req.body ===
-        const { title, content } = req.body;
+        // === SỬA Ở ĐÂY: Nhận title, content (là markdown string) và mindmapJson từ req.body ===
+        const { title, content, mindmapJson } = req.body;
 
         // Kiểm tra xem content (markdown string) có tồn tại không
         if (!content || typeof content !== 'string' || content.trim() === '') {
@@ -23,6 +23,7 @@ exports.createMindmap = async (req, res) => {
         const newMindmapDocument = {
             title: title || 'Mindmap không có tiêu đề', // Lấy title từ req.body hoặc đặt mặc định
             content: content,                         // Lưu markdown string vào content
+            mindmapJson: mindmapJson || null,         // Lưu JSON cây gốc (nếu có) để vẽ high-fidelity mindmap
             createdAt: new Date(),
             deleted: false, // Thêm trạng thái deleted mặc định
             deletedAt: null

@@ -44,6 +44,7 @@ router.get('/:id/json', authMiddleware.checkLoggedIn, async (req, res) => {
                 id: mindmap._id,
                 title: mindmap.title,
                 content: mindmap.content,
+                mindmapJson: mindmap.mindmapJson || null,
                 createdAt: mindmap.createdAt,
                 // Trả về nodes/edges nếu chúng tồn tại trong DB, nếu không trả về mảng rỗng
                 nodes: mindmap.nodes || [],
@@ -94,6 +95,7 @@ router.get('/shared/:ownerId/:id/json', authMiddleware.checkLoggedIn, async (req
                 id: mindmap._id,
                 title: mindmap.title,
                 content: mindmap.content,
+                mindmapJson: mindmap.mindmapJson || null,
                 createdAt: mindmap.createdAt,
                 nodes: mindmap.nodes || [],
                 edges: mindmap.edges || [],

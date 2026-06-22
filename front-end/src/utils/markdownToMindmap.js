@@ -113,16 +113,15 @@ const getStyleByLevel = (level) => {
     borderRadius: 8,
     border: '2px solid #555',
     padding: 8,
-    width: 220,
   };
 
   const colors = {
-    1: { bg: '#A2E9FF', border: '#0288d1', fontSize: 18, fontWeight: 'bold' },
-    2: { bg: '#FFC9C9', border: '#d32f2f', fontSize: 16 },
-    3: { bg: '#96E3AD', border: '#388e3c', fontSize: 14 },
-    4: { bg: '#FFEDA4', border: '#f57c00', fontSize: 13 },
-    5: { bg: '#E0E0E0', border: '#616161', fontSize: 12 },
-    6: { bg: '#F3E5F5', border: '#6A1B9A', fontSize: 12 },
+    1: { bg: '#A2E9FF', border: '#0288d1', fontSize: 18, fontWeight: 'bold', width: 280 },
+    2: { bg: '#FFC9C9', border: '#d32f2f', fontSize: 16, width: 250 },
+    3: { bg: '#96E3AD', border: '#388e3c', fontSize: 14, width: 220 },
+    4: { bg: '#FFEDA4', border: '#f57c00', fontSize: 13, width: 220 },
+    5: { bg: '#E0E0E0', border: '#616161', fontSize: 12, width: 220 },
+    6: { bg: '#F3E5F5', border: '#6A1B9A', fontSize: 12, width: 220 },
   };
 
   const c = colors[level] || colors[5];
@@ -132,6 +131,7 @@ const getStyleByLevel = (level) => {
     border: `2px solid ${c.border}`,
     fontSize: c.fontSize,
     fontWeight: c.fontWeight || 'normal',
+    width: c.width,
   };
 };
 
@@ -146,12 +146,27 @@ export const fastLayout = (nodes, edges) => {
     const node = nodes.find(n => n.id === nodeId);
     if (!node) return 55;
     const label = node.data?.label || '';
-    // Thường 220px rộng sẽ chứa tầm 18 ký tự mỗi dòng
-    const charPerLine = 18;
-    const lines = Math.ceil(Math.max(1, label.length) / charPerLine);
-    const fontSize = 14;
-    const padding = 24; // padding trên dưới + border
-    return Math.max(55, lines * (fontSize * 1.3) + padding);
+    const style = node.data?.style || {};
+    const width = parseInt(style.width || 220, 10);
+    
+    // 1. Chiều cao ước lượng của tiêu đề chính
+    const charsPerLineLabel = Math.max(10, Math.floor((width - 40) / 8));
+    const labelLines = Math.ceil(Math.max(1, label.length) / charsPerLineLabel);
+    const fontSizeLabel = parseInt(style.fontSize || 14, 10);
+    let estimatedHeight = labelLines * (fontSizeLabel * 1.35) + 20; // 20px padding trên dưới
+    
+    // 2. Chiều cao của các points (ý phụ) nếu có
+    const points = node.data?.points || [];
+    if (points.length > 0) {
+      estimatedHeight += 12; // divider margin + border
+      points.forEach(point => {
+        const charsPerLinePoint = Math.max(15, Math.floor((width - 40) / 6.5));
+        const pointLines = Math.ceil(Math.max(1, point.length) / charsPerLinePoint);
+        estimatedHeight += pointLines * (11 * 1.3) + 3; // 3px margin bottom mỗi point
+      });
+    }
+    
+    return Math.max(55, Math.round(estimatedHeight));
   };
 
   const childMap = new Map();
@@ -198,7 +213,11 @@ export const fastLayout = (nodes, edges) => {
     subtreePixelHeights.set(nodeId, totalHeight);
     return totalHeight;
   }
-  calculateSubtreePixelHeight(mainRoot.id);
+  
+  // Tính chiều cao cây con cho toàn bộ các root
+  roots.forEach(root => {
+    calculateSubtreePixelHeight(root.id);
+  });
 
   // Bước 2: Chia đôi các nhánh con của Root sang 2 phía TRÁI và PHẢI
   const rootChildren = childMap.get(mainRoot.id) || [];
@@ -281,29 +300,13 @@ export const fastLayout = (nodes, edges) => {
     currentLeftY += subtreePixelHeights.get(branchId) || 80;
   });
 
-  // Căn chỉnh để root nằm chính giữa trung tâm
+  // Căn chỉnh để root chính nằm chính giữa trung tâm
   const maxRightY = currentRightY;
   const maxLeftY = currentLeftY;
   const maxCenterY = Math.max(maxRightY, maxLeftY) / 2 - getNodeHeight(mainRoot.id) / 2;
 
   const rightOffset = maxCenterY - (maxRightY / 2 - getNodeHeight(mainRoot.id) / 2);
   const leftOffset = maxCenterY - (maxLeftY / 2 - getNodeHeight(mainRoot.id) / 2);
-
-  // Áp dụng offset và tọa độ vào các node
-  nodes.forEach(node => {
-    const pos = nodePositions.get(node.id);
-    if (pos) {
-      let finalY = pos.y;
-      if (pos.x > 0) {
-        finalY += rightOffset;
-      } else if (pos.x < 0) {
-        finalY += leftOffset;
-      } else {
-        finalY = maxCenterY;
-      }
-      node.position = { x: Math.round(pos.x), y: Math.round(finalY) };
-    }
-  });
 
   // Bố cục cho các root phụ (nếu có)
   let extraY = Math.max(maxRightY, maxLeftY) + 150;
@@ -313,6 +316,50 @@ export const fastLayout = (nodes, edges) => {
     nodePositions.set(root.id, { x: 0, y: extraY });
     layoutRight(root.id, 1, extraY);
     extraY += (subtreePixelHeights.get(root.id) || 100) + 100;
+  });
+
+  // Lấy toàn bộ con cháu để lọc offset chỉ cho main tree
+  const getDescendants = (nodeId, map) => {
+    const list = [];
+    const queue = [nodeId];
+    while (queue.length > 0) {
+      const current = queue.shift();
+      const children = map.get(current) || [];
+      children.forEach(childId => {
+        list.push(childId);
+        queue.push(childId);
+      });
+    }
+    return list;
+  };
+
+  const mainRightDescendants = new Set();
+  rightBranches.forEach(bId => {
+    mainRightDescendants.add(bId);
+    getDescendants(bId, childMap).forEach(id => mainRightDescendants.add(id));
+  });
+
+  const mainLeftDescendants = new Set();
+  leftBranches.forEach(bId => {
+    mainLeftDescendants.add(bId);
+    getDescendants(bId, childMap).forEach(id => mainLeftDescendants.add(id));
+  });
+
+  // Áp dụng offset và tọa độ vào các node
+  nodes.forEach(node => {
+    const pos = nodePositions.get(node.id);
+    if (pos) {
+      let finalY = pos.y;
+      if (node.id === mainRoot.id) {
+        finalY = maxCenterY;
+      } else if (mainRightDescendants.has(node.id)) {
+        finalY += rightOffset;
+      } else if (mainLeftDescendants.has(node.id)) {
+        finalY += leftOffset;
+      }
+      // Roots phụ và con cháu giữ nguyên pos.y (không cộng offset của main root)
+      node.position = { x: Math.round(pos.x), y: Math.round(finalY) };
+    }
   });
 
   // Bước 3: Định tuyến Handles thông minh cho các liên kết (edges)
@@ -331,4 +378,81 @@ export const fastLayout = (nodes, edges) => {
   });
 
   return { nodes, edges };
+};
+
+/**
+ * 🌳 Chuyển đổi trực tiếp cấu trúc cây JSON của AI thành Nodes & Edges của React Flow (O(n))
+ * Đặt các points (ý phụ) nằm bên trong node cha (Phương án A) giúp sơ đồ gọn gàng.
+ */
+export const jsonToReactFlow = (jsonObject) => {
+  if (!jsonObject || typeof jsonObject !== 'object') {
+    return { nodes: [], edges: [] };
+  }
+
+  const nodes = [];
+  const edges = [];
+  let nodeIdCounter = 1;
+
+  // 1. Tạo node chính (Root)
+  const rootId = `node-${nodeIdCounter++}`;
+  const rootNode = {
+    id: rootId,
+    type: 'custom',
+    position: { x: 0, y: 0 },
+    draggable: true,
+    selectable: true,
+    data: {
+      label: jsonObject.mainTopic || 'Sơ đồ tư duy',
+      style: getStyleByLevel(1),
+      points: jsonObject.summary ? [jsonObject.summary] : [],
+    },
+  };
+  nodes.push(rootNode);
+
+  // Hàm duyệt đệ quy các node con
+  const traverse = (item, parentId, level) => {
+    if (!item) return;
+
+    const nodeId = `node-${nodeIdCounter++}`;
+    const title = item.title || item.chapterTitle || 'Mục con';
+    
+    const node = {
+      id: nodeId,
+      type: 'custom',
+      position: { x: 0, y: 0 },
+      draggable: true,
+      selectable: true,
+      data: {
+        label: title,
+        style: getStyleByLevel(level),
+        points: Array.isArray(item.points) ? item.points.filter(Boolean) : [],
+      },
+    };
+    nodes.push(node);
+
+    // Tạo liên kết
+    edges.push({
+      id: `edge-${parentId}-${nodeId}`,
+      source: parentId,
+      target: nodeId,
+      type: 'default',
+    });
+
+    // Duyệt qua các children
+    const children = item.children || [];
+    children.forEach(child => {
+      traverse(child, nodeId, Math.min(level + 1, 6));
+    });
+  };
+
+  // Duyệt qua các subTopics của root
+  const subTopics = jsonObject.subTopics || [];
+  subTopics.forEach(topic => {
+    traverse(topic, rootId, 2);
+  });
+
+  console.log(`✅ [jsonToReactFlow] Đã chuyển đổi trực tiếp JSON thành ${nodes.length} nodes và ${edges.length} edges`);
+
+  // Áp dụng thuật toán layout
+  return fastLayout(nodes, edges);
 };

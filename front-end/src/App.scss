@@ -88,6 +88,8 @@ body, #root {
 .custom-node {
   box-sizing: border-box;
   display: flex;
+  flex-direction: column; // Xếp chồng các phần tử theo chiều dọc
+  align-items: stretch;    // Chiếm toàn bộ chiều ngang của node
   text-align: center;
   justify-content: center;
   min-width: 150px;
@@ -100,9 +102,11 @@ body, #root {
 
   .node-label {
     white-space: pre-wrap;
-    word-break: break-word;
+    overflow-wrap: break-word; // Xuống dòng ở khoảng trắng
+    word-break: normal;        // Không cắt giữa chữ tiếng Việt
     min-height: 1.2em;
     transition: color 0.1s ease;
+    width: 100%;
   }
 
   .node-label-input {
@@ -115,7 +119,8 @@ body, #root {
     margin: 0;
     border: none;
     white-space: pre-wrap;
-    word-break: break-word;
+    overflow-wrap: break-word;
+    word-break: normal;
     background: transparent;
     text-align: center;
     outline: none;
@@ -185,7 +190,8 @@ body, #root {
   left: -9999px;
   visibility: hidden;
   white-space: pre-wrap;
-  word-break: break-word;
+  overflow-wrap: break-word;
+  word-break: normal;
   pointer-events: none;
   padding: 0;
   box-sizing: border-box;
