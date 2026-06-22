@@ -3,6 +3,8 @@ const userModel = require('../models/userModel.js');
 const { ObjectId } = require('mongodb');
 const crypto = require('crypto'); 
 const sendEmail = require('../utils/sendEmail.js');
+const bcrypt = require('bcrypt');
+
 // Hiển thị trang đăng ký
 exports.getRegisterPage = (req, res) => {
     res.render('register', { pageTitle: 'Đăng ký' });
@@ -34,10 +36,12 @@ exports.postRegister = async (req, res) => {
             return res.redirect('/register');
         }
 
+        const hashedPassword = await bcrypt.hash(password, 10);
+
         const newUser = {
             email: email.toLowerCase().trim(),
             username: username.toLowerCase().trim(),
-            password: password, // Nên hash password
+            password: hashedPassword,
             avatar: "https://mediamart.vn/images/uploads/2022/713193b6-a8b3-471d-ab04-c38dae2c1da4.jpg",
             role: 'student',
             status: 'active',
@@ -94,7 +98,7 @@ exports.postLogin = async (req, res) => {
 
         // Tìm user trong usersDb
         const user = await userModel.findUserByEmail(usersDb, email);
-        if (!user || user.password !== password) {
+        if (!user || !(await bcrypt.compare(password, user.password))) {
             req.flash('error_msg', 'Email hoặc mật khẩu không chính xác!');
             return res.redirect('/login');
         }
@@ -185,7 +189,7 @@ exports.postForgotPassword = async (req, res) => {
     );
 
     // 4. Gửi email cho người dùng
-    const resetUrl = `${process.env.APP_URL}/reset-password/${resetPasswordToken}`;
+    const resetUrl = `${process.env.APP_URL}/reset-password/${resetToken}`;
     
     const htmlMessage = `
       <p>Bạn nhận được email này vì bạn (hoặc ai đó) đã yêu cầu đặt lại mật khẩu cho tài khoản của bạn.</p>
@@ -257,15 +261,15 @@ exports.postResetPassword = async (req, res) => {
       return res.redirect('/forgot-password');
     }
 
-    // 2. Lấy mật khẩu mới (KHÔNG BĂM)
-    const newPassword = password; // <-- LƯU TRỰC TIẾP MẬT KHẨU (RẤT NGUY HIỂM)
+    // 2. Hash mật khẩu mới
+    const newHashedPassword = await bcrypt.hash(password, 10);
 
     // 3. Cập nhật mật khẩu mới và xóa token
     await usersDb.collection('users').updateOne(
       { _id: user._id },
       {
         $set: {
-          password: newPassword, // <-- LƯU MẬT KHẨU MỚI (DẠNG CHỮ)
+          password: newHashedPassword,
           resetPasswordToken: undefined, // Xóa token
           resetPasswordExpires: undefined, // Xóa thời hạn
           updatedAt: new Date(),

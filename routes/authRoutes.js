@@ -4,6 +4,7 @@ const router = express.Router();
 const authController = require('../controllers/authController.js');
 const authMiddleware = require('../middlewares/middlewares.js');
 const profileController = require('../controllers/profileController.js');
+const { loginRateLimiter, forgotPasswordRateLimiter } = require('../middlewares/rateLimiter.js');
 // === ROUTE TRANG CHỦ ===
 router.get('/', (req, res) => {
   // Nếu đã đăng nhập thì vào dashboard, nếu chưa thì vào trang home
@@ -19,11 +20,11 @@ router.post('/register', authMiddleware.bypassLogin, authController.postRegister
 
 // === ROUTE ĐĂNG NHẬP ===
 router.get('/login', authMiddleware.bypassLogin, authController.getLoginPage);
-router.post('/login', authController.postLogin);
+router.post('/login', loginRateLimiter, authController.postLogin);
 
 // === ROUTE QUÊN MẬT KHẨU ===
 router.get('/forgot-password', authMiddleware.bypassLogin, authController.getForgotPasswordPage);
-router.post('/forgot-password', authMiddleware.bypassLogin, authController.postForgotPassword);
+router.post('/forgot-password', forgotPasswordRateLimiter, authMiddleware.bypassLogin, authController.postForgotPassword);
 router.get('/reset-password/:token', authMiddleware.bypassLogin, authController.getResetPasswordPage);
 router.post('/reset-password/:token', authMiddleware.bypassLogin, authController.postResetPassword);
 

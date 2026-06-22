@@ -18,6 +18,9 @@ const profileRoutes = require('./routes/profileRoutes.js');
 const mindmapRoutes = require('./routes/mindmap');
 const friendRoutes = require('./routes/friendRoutes.js');
 
+// ====== Utils ======
+const { startTrashCleanupJob } = require('./utils/trashCleanup.js');
+
 const reactBuildDir = path.join(__dirname, 'front-end', 'build');
 const reactIndexFile = path.join(reactBuildDir, 'index.html');
 
@@ -113,7 +116,11 @@ async function startServer() {
 
     // === KHỞI TẠO SOCKET HANDLER ===
     require('./socketHandler.js')(io, usersDb, chatDb);
-    console.log("✅ Socket Handler Initialized!"); // Log 5
+    console.log('✅ Socket Handler Initialized!'); // Log 5
+
+    // === KHỞI ĐỘNG CRON JOB TỰ ĐỘNG DỌN THÙNG RÁC ===
+    startTrashCleanupJob(mindmapsDb);
+    console.log('✅ Trash Cleanup Job Scheduled!');
 
     // ==========================================================
     // === ✨ THỨ TỰ ROUTE MỚI ĐỂ ƯU TIÊN PUG ✨ ===

@@ -2,7 +2,8 @@
 const {
     ObjectId
 } = require('mongodb');
-const userModel = require('../models/userModel.js'); //
+const bcrypt = require('bcrypt');
+const userModel = require('../models/userModel.js');
 
 // Hiển thị trang profile chính
 exports.getProfilePage = async (req, res) => {
@@ -138,46 +139,52 @@ exports.postAvatarUpload = async (req, res) => {
 };
 
 exports.changePassword = async (req, res) => {
-    console.log('🚨 🚨 🚨 CONTROLLER CHANGE PASSWORD ĐƯỢC GỌI 🚨 🚨 🚨');
-    console.log('📝 Session User ID:', req.session.user?._id);
-    console.log('📦 Request Body:', req.body);
-    console.log('⏰ Thời gian:', new Date().toISOString());
-    const { password, confirmPassword } = req.body;
+    const { currentPassword, password, confirmPassword } = req.body;
     const usersDb = req.app.locals.usersDb;
     const userId = new ObjectId(req.session.user._id);
+
     try {
-        if (!password || !confirmPassword) {
-            console.log("❌ Lỗi: Thiếu mật khẩu");
-            req.flash('error_msg', 'Vui lòng nhập đầy đủ mật khẩu mới và xác nhận.');
+        if (!currentPassword || !password || !confirmPassword) {
+            req.flash('error_msg', 'Vui lòng nhập đầy đủ mật khẩu hiện tại, mật khẩu mới và xác nhận.');
             return res.redirect('/profile/edit');
         }
-        
+
         if (password !== confirmPassword) {
-            console.log("❌ Lỗi: Mật khẩu không khớp");
             req.flash('error_msg', 'Mật khẩu xác nhận không khớp.');
             return res.redirect('/profile/edit');
         }
 
-        console.log("✅ Đang cập nhật mật khẩu mới...");
-        
+        // Lấy thông tin user từ DB để xác minh mật khẩu cũ
+        const user = await userModel.findUserById(usersDb, userId);
+        if (!user) {
+            req.flash('error_msg', 'Không tìm thấy người dùng.');
+            return res.redirect('/profile/edit');
+        }
+
+        // Xác minh mật khẩu hiện tại bằng bcrypt
+        const isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.password);
+        if (!isCurrentPasswordValid) {
+            req.flash('error_msg', 'Mật khẩu hiện tại không chính xác.');
+            return res.redirect('/profile/edit');
+        }
+
+        // Hash mật khẩu mới trước khi lưu
+        const hashedPassword = await bcrypt.hash(password, 10);
+
         const result = await usersDb.collection('users').updateOne(
             { _id: userId },
             {
                 $set: {
-                    password: password, // Lưu mật khẩu plain text
+                    password: hashedPassword,
                     updatedAt: new Date()
                 }
             }
         );
 
-        console.log("📊 Kết quả cập nhật DB:", result);
-
         if (result.modifiedCount === 1) {
-            console.log("✅ Cập nhật mật khẩu thành công!");
             req.flash('success_msg', 'Cập nhật mật khẩu thành công!');
             res.redirect('/profile');
         } else {
-            console.log("❌ Không có bản ghi nào được cập nhật");
             req.flash('error_msg', 'Không thể cập nhật mật khẩu!');
             res.redirect('/profile/edit');
         }
