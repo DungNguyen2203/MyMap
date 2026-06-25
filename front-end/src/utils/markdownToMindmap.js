@@ -219,17 +219,13 @@ export const fastLayout = (nodes, edges) => {
     calculateSubtreePixelHeight(root.id);
   });
 
-  // Bước 2: Chia đôi các nhánh con của Root sang 2 phía TRÁI và PHẢI
+  // Bước 2: Cho toàn bộ các nhánh con của Root phát triển sang phía PHẢI (không chia 2 bên nữa)
   const rootChildren = childMap.get(mainRoot.id) || [];
   const leftBranches = [];
   const rightBranches = [];
 
-  rootChildren.forEach((childId, index) => {
-    if (index % 2 === 0) {
-      rightBranches.push(childId);
-    } else {
-      leftBranches.push(childId);
-    }
+  rootChildren.forEach((childId) => {
+    rightBranches.push(childId);
   });
 
   const nodePositions = new Map();

@@ -20,6 +20,12 @@ const isImageUrl = (text) => {
 };
 // --- Hết Helper ---
 
+const adjustHeight = (el) => {
+  if (!el) return;
+  el.style.height = 'auto';
+  el.style.height = `${el.scrollHeight}px`;
+};
+
 
 function CustomNode({ id, data, selected }) {
   // --- (Lấy state và actions từ store) ---
@@ -32,7 +38,10 @@ function CustomNode({ id, data, selected }) {
   const [isHovered, setIsHovered] = useState(false);
 
   const [label, setLabel] = useState(data.label);
-  const textareaRef = useRef(null);
+  const [pointsText, setPointsText] = useState('');
+
+  const titleTextareaRef = useRef(null);
+  const pointsTextareaRef = useRef(null);
   const textSizerRef = useRef(null);
 
   // --- (Các hàm xử lý sự kiện: resize, double-click, blur, keydown) ---
@@ -44,26 +53,63 @@ function CustomNode({ id, data, selected }) {
     setIsEditing(true);
     setIsTexting(true);
   };
-  const handleBlur = () => {
+  const handleBlur = (e) => {
+    if (e && e.currentTarget && e.relatedTarget) {
+      const nodeElement = e.currentTarget.closest('.custom-node');
+      if (nodeElement && nodeElement.contains(e.relatedTarget)) {
+        return;
+      }
+    }
+
+    const updatedFields = {};
     if (data.label !== label) {
-      updateNodeData(id, { label });
+      updatedFields.label = label;
+    }
+    
+    const parsedPoints = pointsText
+      .split('\n')
+      .map(p => p.trim())
+      .filter(Boolean);
+    
+    const oldPointsStr = JSON.stringify(data.points || []);
+    const newPointsStr = JSON.stringify(parsedPoints);
+    if (oldPointsStr !== newPointsStr) {
+      updatedFields.points = parsedPoints;
+    }
+    
+    if (Object.keys(updatedFields).length > 0) {
+      updateNodeData(id, updatedFields);
     }
     setIsEditing(false);
     setIsTexting(false);
   };
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleBlur();
+      if (e.target === titleTextareaRef.current) {
+        e.preventDefault();
+        handleBlur(e);
+      }
     }
   };
 
-  // --- (Các hook useEffect: focus, draggable) ---
+  // Đồng bộ hóa points từ props
+  useEffect(() => {
+    if (data.points) {
+      setPointsText(data.points.join('\n'));
+    } else {
+      setPointsText('');
+    }
+  }, [data.points]);
+
+  // Focus và điều chỉnh độ cao ban đầu của các textareas
   useEffect(() => {
     if (isTexting) {
-      textareaRef.current?.focus();
-      const t = textareaRef.current;
+      adjustHeight(titleTextareaRef.current);
+      adjustHeight(pointsTextareaRef.current);
+      
+      const t = titleTextareaRef.current;
       if (t) {
+        t.focus();
         t.setSelectionRange(t.value.length, t.value.length);
         t.scrollTop = t.scrollHeight;
       }
@@ -87,10 +133,8 @@ function CustomNode({ id, data, selected }) {
 
   // --- (useEffect tự động Sizing) ---
   useEffect(() => {
-    // Logic này giữ nguyên, nó tự động tính toán chiều cao
-    const textarea = textareaRef.current;
     const textSizer = textSizerRef.current;
-    if (!textarea || !textSizer) return;
+    if (!textSizer) return;
     const s = data.style || {};
     const curWidth = typeof s.width === 'number' ? s.width : parseInt(String(s.width || 0), 10);
     const curHeight = typeof s.height === 'number' ? s.height : parseInt(String(s.height || 0), 10);
@@ -103,44 +147,43 @@ function CustomNode({ id, data, selected }) {
     textSizer.style.fontFamily = s.fontFamily || 'Arial';
     textSizer.style.fontWeight = s.fontWeight || 'normal';
     textSizer.style.fontStyle = s.fontStyle || 'normal';
+    
     const currentText = (isTexting ? label : data.label) || ' ';
-    if (data.points && data.points.length > 0 && !isEditing && !isTexting) {
-      const pointsHtml = data.points.map(pt => `<li style="margin-bottom:3px; word-break:break-word;">${pt}</li>`).join('');
+    const currentPoints = isTexting
+      ? (pointsText ? pointsText.split('\n').filter(Boolean) : [])
+      : (data.points || []);
+
+    if (currentPoints.length > 0) {
+      const pointsHtml = currentPoints.map(pt => `<li style="margin-bottom:3px; word-break:break-word;">${pt}</li>`).join('');
       textSizer.innerHTML = `<div style="word-break:break-word;">${currentText}</div><ul style="margin-top:6px; padding-left:15px; font-size:11px; list-style-type:disc; line-height:1.3; color:${s.color || '#333'}">${pointsHtml}</ul>`;
     } else {
       textSizer.textContent = currentText + '\u200B';
     }
+
     const newSize = {};
     let sizeChanged = false;
-    let textSizerWidth;
-    if (isTexting) {
-      textSizer.style.width = 'auto';
-      const newWidth = textSizer.scrollWidth + horizontalPadding + totalBorder;
-      const effectiveWidth = Math.max(curWidth, newWidth);
-      textSizerWidth = effectiveWidth - horizontalPadding - totalBorder;
-      if (newWidth > curWidth) {
-        newSize.width = Math.max(150, Math.round(newWidth));
-        sizeChanged = true;
-      }
-    } else {
-      textSizerWidth = curWidth - horizontalPadding - totalBorder;
-    }
+    
+    // Luôn giữ nguyên width của node khi hiển thị lẫn khi soạn thảo, tránh tình trạng bị rộng ra
+    const textSizerWidth = curWidth - horizontalPadding - totalBorder;
     textSizer.style.width = `${textSizerWidth}px`;
+    
     const newHeight = textSizer.scrollHeight + verticalPadding + totalBorder;
     if (isNaN(curHeight) || Math.abs(newHeight - curHeight) > 1) {
       newSize.height = Math.round(newHeight);
       sizeChanged = true;
     }
-    if (isTexting && textarea) {
-      const newInnerHeight = newHeight - verticalPadding - totalBorder;
-      textarea.style.height = `${newInnerHeight}px`;
-      textarea.scrollTop = textarea.scrollHeight;
+    
+    if (isTexting) {
+      adjustHeight(titleTextareaRef.current);
+      adjustHeight(pointsTextareaRef.current);
     }
-    if (sizeChanged && !isNaN(newSize.height)) { // Thêm check isNaN
+    
+    if (sizeChanged && !isNaN(newSize.height)) {
       updateNodeSize(id, newSize);
     }
   }, [
     label,
+    pointsText,
     data.label,
     data.points,
     isTexting,
@@ -254,48 +297,98 @@ function CustomNode({ id, data, selected }) {
         />
 
         {renderIcon()}
-        <div className="node-label">{data.label || '...'}</div>
-        {data.points && data.points.length > 0 && !isEditing && !isTexting && (
-          <ul className="node-points-list" style={{ 
-            marginTop: '6px', 
-            paddingLeft: '15px', 
-            fontSize: '11px', 
-            textAlign: 'left', 
-            opacity: 0.85,
-            borderTop: '1px dashed rgba(0,0,0,0.15)',
-            paddingTop: '6px',
-            listStyleType: 'disc',
-            color: nodeStyle.color || '#333',
-            fontFamily: nodeStyle.fontFamily || 'Arial',
-            lineHeight: '1.3'
-          }}>
-            {data.points.map((point, index) => (
-              <li key={index} style={{ marginBottom: '3px', wordBreak: 'break-word' }}>{point}</li>
-            ))}
-          </ul>
+        
+        {isTexting ? (
+          <div className="node-edit-container" style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <textarea
+              ref={titleTextareaRef}
+              value={label}
+              onChange={(e) => {
+                const val = e.target.value;
+                setLabel(val);
+                updateNodeData(id, { label: val });
+                adjustHeight(e.target);
+              }}
+              onBlur={handleBlur}
+              onKeyDown={handleKeyDown}
+              className="node-label-edit-textarea nodrag"
+              style={{
+                width: '100%',
+                background: 'transparent',
+                border: 'none',
+                outline: 'none',
+                resize: 'none',
+                overflow: 'hidden',
+                textAlign: 'center',
+                fontSize: nodeStyle.fontSize,
+                fontFamily: nodeStyle.fontFamily,
+                fontWeight: nodeStyle.fontWeight,
+                fontStyle: nodeStyle.fontStyle,
+                color: nodeStyle.color || '#111',
+                padding: 0,
+                margin: 0,
+                lineHeight: '1.35',
+              }}
+            />
+            {(data.points || pointsText) && (
+              <>
+                <div style={{ borderTop: '1px dashed rgba(0,0,0,0.15)', width: '100%', height: '1px', margin: '4px 0' }} />
+                <textarea
+                  ref={pointsTextareaRef}
+                  value={pointsText}
+                  placeholder="Nhập các ý chính (mỗi dòng một ý)..."
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setPointsText(val);
+                    adjustHeight(e.target);
+                  }}
+                  onBlur={handleBlur}
+                  onKeyDown={handleKeyDown}
+                  className="node-points-edit-textarea nodrag"
+                  style={{
+                    width: '100%',
+                    background: 'transparent',
+                    border: 'none',
+                    outline: 'none',
+                    resize: 'none',
+                    overflow: 'hidden',
+                    textAlign: 'left',
+                    fontSize: '11px',
+                    fontFamily: nodeStyle.fontFamily || 'Arial',
+                    color: nodeStyle.color || '#333',
+                    padding: '0 0 0 10px',
+                    margin: 0,
+                    lineHeight: '1.3',
+                  }}
+                />
+              </>
+            )}
+          </div>
+        ) : (
+          <>
+            <div className="node-label">{data.label || '...'}</div>
+            {data.points && data.points.length > 0 && (
+              <ul className="node-points-list" style={{ 
+                marginTop: '6px', 
+                paddingLeft: '15px', 
+                fontSize: '11px', 
+                textAlign: 'left', 
+                opacity: 0.85,
+                borderTop: '1px dashed rgba(0,0,0,0.15)',
+                paddingTop: '6px',
+                listStyleType: 'disc',
+                color: nodeStyle.color || '#333',
+                fontFamily: nodeStyle.fontFamily || 'Arial',
+                lineHeight: '1.3'
+              }}>
+                {data.points.map((point, index) => (
+                  <li key={index} style={{ marginBottom: '3px', wordBreak: 'break-word' }}>{point}</li>
+                ))}
+              </ul>
+            )}
+          </>
         )}
-        <textarea
-          ref={textareaRef}
-          value={label}
-          onChange={(e) => {
-            const val = e.target.value;
-            setLabel(val);
-            updateNodeData(id, { label: val });
-          }}
-          // ...
-          onBlur={handleBlur}
-          onKeyDown={handleKeyDown}
-          className="node-label-input"
-          style={{
-            fontSize: nodeStyle.fontSize,
-            fontFamily: nodeStyle.fontFamily,
-            fontWeight: nodeStyle.fontWeight,
-            fontStyle: nodeStyle.fontStyle,
-            color: nodeStyle.color,
-            top: data.icon ? '35px' : '10px',
-            height: data.icon ? 'calc(100% - 45px)' : 'calc(100% - 20px)',
-          }}
-        />
+        
         <div ref={textSizerRef} className="text-sizer" aria-hidden="true" />
       </div>
 
