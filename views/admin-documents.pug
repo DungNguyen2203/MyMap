@@ -35,6 +35,12 @@ block admin_content
                   td #{doc.username}
                   td #{new Date(doc.createdAt || Date.now()).toLocaleDateString('vi-VN')}
                   td
+                    button.btn.btn-sm.btn-outline-primary.me-2(
+                      id=`btn-view-${doc._id}`
+                      onclick=`viewDocumentDetails('${doc._id}')`
+                    )
+                      i.fas.fa-eye.me-1
+                      | Xem chi tiết
                     button.btn.btn-sm.btn-outline-danger(
                       id=`btn-delete-${doc._id}`
                       onclick=`deleteDocument('${doc._id}')`
@@ -42,18 +48,128 @@ block admin_content
                       i.fas.fa-trash.me-1
                       | Xóa vi phạm
 
+  //- MODAL XEM CHI TIẾT TÀI LIỆU
+  #documentDetailsModal.modal.fade(tabindex="-1" aria-hidden="true")
+    .modal-dialog.modal-lg.modal-dialog-centered.modal-dialog-scrollable
+      .modal-content.bg-dark.text-light(style="border: 1px solid rgba(140, 82, 255, 0.3);")
+        .modal-header(style="border-bottom: 1px solid rgba(255, 255, 255, 0.1);")
+          h5.modal-title#modalDocTitle Tên tài liệu
+          button.btn-close.btn-close-white(type="button" data-bs-dismiss="modal" aria-label="Close")
+        .modal-body
+          .row.mb-4
+            .col-md-6.mb-2
+              p.mb-0.text-muted.small Người tải lên:
+              p.fw-semibold.mb-0#modalDocUser N/A
+            .col-md-6.mb-2
+              p.mb-0.text-muted.small Ngày tải lên:
+              p.fw-semibold.mb-0#modalDocDate N/A
+            .col-md-6.mb-2
+              p.mb-0.text-muted.small Định dạng:
+              span.badge.bg-secondary#modalDocType N/A
+            .col-md-6.mb-2
+              p.mb-0.text-muted.small Dung lượng:
+              p.fw-semibold.mb-0#modalDocSize N/A
+            .col-md-12.mt-2
+              p.mb-0.text-muted.small Mã băm (SHA-256):
+              code.text-info.word-break-all#modalDocHash N/A
+
+          hr(style="border-color: rgba(255, 255, 255, 0.1);")
+
+          .mb-4
+            h6.text-primary.fw-bold Bản tóm tắt nội dung
+            .p-3.rounded(style="background: rgba(255,255,255,0.05); max-height: 200px; overflow-y: auto;")
+              p.mb-0.white-space-pre-line#modalDocSummary Đang tải...
+
+          .mb-3
+            h6.text-success.fw-bold Cấu trúc sơ đồ tư duy (Markdown)
+            pre.p-3.rounded.text-success(style="background: rgba(0,0,0,0.3); max-height: 300px; overflow-y: auto; white-space: pre-wrap; font-family: monospace; font-size: 0.85rem;")
+              code#modalDocMarkdown Đang tải...
+
+        .modal-footer(style="border-top: 1px solid rgba(255, 255, 255, 0.1);")
+          button.btn.btn-secondary(type="button" data-bs-dismiss="modal") Đóng
+          button.btn.btn-danger#modalDeleteBtn(type="button")
+            i.fas.fa-trash.me-1
+            | Xóa vi phạm
+
 block scripts
   script.
+    let docDetailsModal = null;
+    let activeDocIdToDelete = null;
+
+    document.addEventListener('DOMContentLoaded', () => {
+      // Khởi tạo Bootstrap Modal instance
+      const modalEl = document.getElementById('documentDetailsModal');
+      if (modalEl) {
+        docDetailsModal = new bootstrap.Modal(modalEl);
+      }
+
+      // Đăng ký sự kiện nút xóa bên trong Modal
+      const modalDeleteBtn = document.getElementById('modalDeleteBtn');
+      if (modalDeleteBtn) {
+        modalDeleteBtn.addEventListener('click', async () => {
+          if (!activeDocIdToDelete) return;
+          docDetailsModal.hide();
+          await deleteDocument(activeDocIdToDelete);
+        });
+      }
+    });
+
+    async function viewDocumentDetails(docId) {
+      const btn = document.getElementById(`btn-view-${docId}`);
+      if (!btn) return;
+
+      const originalHTML = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>...';
+
+      try {
+        const res = await fetch(`/admin/documents/${docId}`);
+        const data = await res.json();
+
+        if (data.success && data.document) {
+          const doc = data.document;
+          activeDocIdToDelete = doc._id;
+
+          // Cập nhật thông tin vào Modal
+          document.getElementById('modalDocTitle').textContent = doc.title;
+          document.getElementById('modalDocUser').textContent = doc.username;
+          document.getElementById('modalDocDate').textContent = new Date(doc.createdAt).toLocaleDateString('vi-VN') + ' ' + new Date(doc.createdAt).toLocaleTimeString('vi-VN');
+          document.getElementById('modalDocType').textContent = doc.fileType ? doc.fileType.split('/')[1] : 'N/A';
+          document.getElementById('modalDocSize').textContent = (doc.size / (1024 * 1024)).toFixed(2) + ' MB';
+          document.getElementById('modalDocHash').textContent = doc.hash || 'N/A';
+          document.getElementById('modalDocSummary').textContent = doc.summary;
+          document.getElementById('modalDocMarkdown').textContent = doc.markdown;
+
+          // Hiển thị modal
+          if (docDetailsModal) {
+            docDetailsModal.show();
+          }
+        } else {
+          showToast(data.message || 'Không thể lấy dữ liệu chi tiết.', 'Lỗi', 'error');
+        }
+      } catch (err) {
+        console.error(err);
+        showToast('Có lỗi xảy ra khi kết nối server.', 'Thất bại', 'error');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalHTML;
+      }
+    }
+
     async function deleteDocument(docId) {
       if (!confirm('Bạn có chắc chắn muốn xóa tài liệu vi phạm này khỏi hệ thống?')) return;
       
       const btn = document.getElementById(`btn-delete-${docId}`);
       const row = document.getElementById(`doc-row-${docId}`);
       
-      if (!btn || !row) return;
-
-      btn.disabled = true;
-      btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Đang xóa';
+      // Tạm thời vô hiệu hóa nút Xem chi tiết nếu đang xóa
+      const viewBtn = document.getElementById(`btn-view-${docId}`);
+      if (viewBtn) viewBtn.disabled = true;
+      
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Đang xóa';
+      }
 
       try {
         const res = await fetch(`/admin/documents/${docId}/delete`, {
@@ -65,27 +181,33 @@ block scripts
         
         if (result.success) {
           showToast(result.message, 'Thành công', 'success');
-          // Xóa hàng khỏi bảng với hiệu ứng phai mờ
-          row.style.transition = 'all 0.5s ease';
-          row.style.opacity = '0';
-          setTimeout(() => {
-            row.remove();
-            // Cập nhật số lượng tài liệu hiển thị ở tiêu đề
-            const countBadge = document.querySelector('.badge.bg-primary');
-            if (countBadge) {
-              const curCount = parseInt(countBadge.textContent, 10);
-              countBadge.textContent = `${curCount - 1} tài liệu`;
-            }
-          }, 500);
+          if (row) {
+            row.style.transition = 'all 0.5s ease';
+            row.style.opacity = '0';
+            setTimeout(() => {
+              row.remove();
+              const countBadge = document.querySelector('.badge.bg-primary');
+              if (countBadge) {
+                const curCount = parseInt(countBadge.textContent, 10);
+                countBadge.textContent = `${curCount - 1} tài liệu`;
+              }
+            }, 500);
+          }
         } else {
           showToast(result.message, 'Lỗi', 'error');
-          btn.disabled = false;
-          btn.innerHTML = '<i class="fas fa-trash me-1"></i>Xóa vi phạm';
+          if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-trash me-1"></i>Xóa vi phạm';
+          }
+          if (viewBtn) viewBtn.disabled = false;
         }
       } catch (err) {
         console.error(err);
         showToast('Có lỗi xảy ra khi xóa tài liệu.', 'Thất bại', 'error');
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-trash me-1"></i>Xóa vi phạm';
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-trash me-1"></i>Xóa vi phạm';
+        }
+        if (viewBtn) viewBtn.disabled = false;
       }
     }

@@ -4,7 +4,7 @@ const { ObjectId } = require('mongodb');
 exports.createMindmap = async (req, res) => {
     try {
         const db = req.app.locals.mindmapsDb;
-        // === SỬA Ở ĐÂY: Nhận title, content (là markdown string) và mindmapJson từ req.body ===
+        // Nhận title, content (là markdown string) và mindmapJson từ req.body ===
         const { title, content, mindmapJson } = req.body;
 
         // Kiểm tra xem content (markdown string) có tồn tại không

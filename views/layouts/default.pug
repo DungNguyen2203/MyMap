@@ -253,8 +253,8 @@ html(lang="vi")
         } // kết thúc if (searchInput && searchResults)
 
         // === TỰ ĐỘNG HIỂN THỊ TOAST TỪ FLASH MESSAGES ===
-        const flashSuccess = #{success_msg ? JSON.stringify(success_msg) : 'null'}; 
-        const flashError = #{error_msg ? JSON.stringify(error_msg) : 'null'};
+        const flashSuccess = !{success_msg ? JSON.stringify(success_msg) : 'null'}; 
+        const flashError = !{error_msg ? JSON.stringify(error_msg) : 'null'};
         if (flashSuccess && flashSuccess.length > 0) { 
           showToast(flashSuccess[0], 'Thành công', 'success');
         }
