@@ -208,8 +208,8 @@ module.exports = (usersDb) => {
       );
       console.log("Kết quả accept:", result);
 
-      // Sửa kiểm tra: findOneAndUpdate trả về object chứa 'value' (document sau update) hoặc null nếu không tìm thấy
-      if (!result || !result.value) {
+      // MongoDB Driver v6.x trả về document trực tiếp, không chứa trường 'value'
+      if (!result) {
         console.log("Lỗi accept: Không tìm thấy request hoặc đã xử lý");
         return res.status(404).json({ success: false, message: 'Không tìm thấy lời mời hoặc lời mời đã được xử lý.' });
       }
