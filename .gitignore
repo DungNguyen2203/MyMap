@@ -21,6 +21,7 @@
 
 *.pdf
 *.md
+!README.md
 *.tex
 *.zip
 *.txt
